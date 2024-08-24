@@ -1,22 +1,6 @@
 locals {
-
-  defaults = {
-    # The `tenant` label was introduced in v0.25.0. To preserve backward compatibility, or, really, to ensure
-    # that people using the `tenant` label are alerted that it was not previously supported if they try to
-    # use it in an older version, it is not included by default.
-    label_order         = ["namespace", "environment", "stage", "name", "attributes"]
-    regex_replace_chars = "/[^-a-zA-Z0-9]/"
-    delimiter           = "-"
-    replacement         = ""
-    id_length_limit     = 0
-    id_hash_length      = 5
-    label_key_case      = "title"
-    label_value_case    = "lower"
-
-    # The default value of labels_as_tags cannot be included in this
-    # defaults` map because it creates a circular dependency
-  }
-
+  # The default value of labels_as_tags cannot be included in this
+  # defaults` map because it creates a circular dependency
   default_labels_as_tags = keys(local.tags_context)
   # Unlike other inputs, the first setting of `labels_as_tags` cannot be later overridden. However,
   # we still have to pass the `input` map as the context to the next module. So we need to distinguish
@@ -34,38 +18,41 @@ locals {
   #
   # To determine whether that context.labels_as_tags is not set,
   # we have to cover 2 cases: 1) context does not have a labels_as_tags key, 2) it is present and set to ["unset"]
-  context_labels_as_tags_is_unset = try(contains(var.context.labels_as_tags, "unset"), true)
+  context_labels_as_tags_is_unset = try(contains(local.input_context.labels_as_tags, "unset"), true)
 
   # So far, we have decided not to allow overriding replacement or id_hash_length
   replacement    = local.defaults.replacement
   id_hash_length = local.defaults.id_hash_length
+
+  input_context = merge(local.defaults, jsondecode(base64decode(var.context)))
 
   # The values provided by variables supersede the values inherited from the context object,
   # except for tags and attributes which are merged.
   input = {
     # It would be nice to use coalesce here, but we cannot, because it
     # is an error for all the arguments to coalesce to be empty.
-    enabled   = var.enabled == null ? var.context.enabled : var.enabled
-    namespace = var.namespace == null ? var.context.namespace : var.namespace
-    # tenant was introduced in v0.25.0, prior context versions do not have it
-    tenant      = var.tenant == null ? lookup(var.context, "tenant", null) : var.tenant
-    environment = var.environment == null ? var.context.environment : var.environment
-    stage       = var.stage == null ? var.context.stage : var.stage
-    name        = var.name == null ? var.context.name : var.name
-    delimiter   = var.delimiter == null ? var.context.delimiter : var.delimiter
+    enabled     = var.enabled == null ? local.input_context.enabled : var.enabled
+    namespace   = var.namespace == null ? local.input_context.namespace : var.namespace
+    location    = var.location == null ? local.input_context.location : var.location
+    environment = var.environment == null ? local.input_context.environment : var.environment
+    application = var.application == null ? local.input_context.application : var.application
+    delimiter   = var.delimiter == null ? local.input_context.delimiter : var.delimiter
     # modules tack on attributes (passed by var) to the end of the list (passed by context)
-    attributes = compact(distinct(concat(coalesce(var.context.attributes, []), coalesce(var.attributes, []))))
-    tags       = merge(var.context.tags, var.tags)
+    attributes = compact(distinct(concat(coalesce(local.input_context.attributes, []), coalesce(var.attributes, []))))
+    tags       = merge(local.input_context.tags, var.tags)
 
-    additional_tag_map  = merge(var.context.additional_tag_map, var.additional_tag_map)
-    label_order         = var.label_order == null ? var.context.label_order : var.label_order
-    regex_replace_chars = var.regex_replace_chars == null ? var.context.regex_replace_chars : var.regex_replace_chars
-    id_length_limit     = var.id_length_limit == null ? var.context.id_length_limit : var.id_length_limit
-    label_key_case      = var.label_key_case == null ? lookup(var.context, "label_key_case", null) : var.label_key_case
-    label_value_case    = var.label_value_case == null ? lookup(var.context, "label_value_case", null) : var.label_value_case
+    additional_tag_map  = merge(local.input_context.additional_tag_map, var.additional_tag_map)
+    label_order         = var.label_order == null ? local.input_context.label_order : var.label_order
+    resource_codes      = var.resource_codes == null ? local.input_context.resource_codes : var.resource_codes
+    region_codes        = var.region_codes == null ? local.input_context.region_codes : var.region_codes
+    environment_codes   = var.environment_codes == null ? local.input_context.environment_codes : var.environment_codes
+    regex_replace_chars = var.regex_replace_chars == null ? local.input_context.regex_replace_chars : var.regex_replace_chars
+    id_length_limit     = var.id_length_limit == null ? local.input_context.id_length_limit : var.id_length_limit
+    label_key_case      = var.label_key_case == null ? lookup(local.input_context, "label_key_case", null) : var.label_key_case
+    label_value_case    = var.label_value_case == null ? lookup(local.input_context, "label_value_case", null) : var.label_value_case
 
-    descriptor_formats = merge(lookup(var.context, "descriptor_formats", {}), var.descriptor_formats)
-    labels_as_tags     = local.context_labels_as_tags_is_unset ? var.labels_as_tags : var.context.labels_as_tags
+    descriptor_formats = merge(lookup(local.input_context, "descriptor_formats", {}), var.descriptor_formats)
+    labels_as_tags     = local.context_labels_as_tags_is_unset ? var.labels_as_tags : local.input_context.labels_as_tags
   }
 
 
@@ -73,7 +60,7 @@ locals {
   regex_replace_chars = coalesce(local.input.regex_replace_chars, local.defaults.regex_replace_chars)
 
   # string_label_names are names of inputs that are strings (not list of strings) used as labels
-  string_label_names = ["namespace", "tenant", "environment", "stage", "name"]
+  string_label_names = ["namespace", "location", "environment", "application"]
   normalized_labels = { for k in local.string_label_names : k =>
     local.input[k] == null ? "" : replace(local.input[k], local.regex_replace_chars, local.replacement)
   }
@@ -90,17 +77,21 @@ locals {
     local.label_value_case == "upper" ? upper(v) : lower(v))
   ]))
 
-  namespace   = local.formatted_labels["namespace"]
-  tenant      = local.formatted_labels["tenant"]
-  environment = local.formatted_labels["environment"]
-  stage       = local.formatted_labels["stage"]
-  name        = local.formatted_labels["name"]
+  namespace        = local.formatted_labels["namespace"]
+  location         = local.formatted_labels["location"]
+  location_code    = try(local.region_codes[local.location], "")
+  environment      = local.formatted_labels["environment"]
+  environment_code = try(local.environment_codes[local.environment], "")
+  application      = local.normalized_labels["application"]
 
-  delimiter        = local.input.delimiter == null ? local.defaults.delimiter : local.input.delimiter
-  label_order      = local.input.label_order == null ? local.defaults.label_order : coalescelist(local.input.label_order, local.defaults.label_order)
-  id_length_limit  = local.input.id_length_limit == null ? local.defaults.id_length_limit : local.input.id_length_limit
-  label_key_case   = local.input.label_key_case == null ? local.defaults.label_key_case : local.input.label_key_case
-  label_value_case = local.input.label_value_case == null ? local.defaults.label_value_case : local.input.label_value_case
+  delimiter         = local.input.delimiter == null ? local.defaults.delimiter : local.input.delimiter
+  label_order       = local.input.label_order == null ? local.defaults.label_order : coalescelist(local.input.label_order, local.defaults.label_order)
+  resource_codes    = local.input.resource_codes == null ? local.defaults.resource_codes : local.input.resource_codes
+  environment_codes = local.input.environment_codes == null ? local.defaults.environment_codes : local.input.environment_codes
+  region_codes      = local.input.region_codes == null ? local.defaults.region_codes : local.input.region_codes
+  id_length_limit   = local.input.id_length_limit == null ? local.defaults.id_length_limit : local.input.id_length_limit
+  label_key_case    = local.input.label_key_case == null ? local.defaults.label_key_case : local.input.label_key_case
+  label_value_case  = local.input.label_value_case == null ? local.defaults.label_value_case : local.input.label_value_case
 
   # labels_as_tags is an exception to the rule that input vars override context values (see above)
   labels_as_tags = contains(local.input.labels_as_tags, "default") ? local.default_labels_as_tags : local.input.labels_as_tags
@@ -108,7 +99,7 @@ locals {
   # Just for standardization and completeness
   descriptor_formats = local.input.descriptor_formats
 
-  additional_tag_map = merge(var.context.additional_tag_map, var.additional_tag_map)
+  additional_tag_map = merge(local.input_context.additional_tag_map, var.additional_tag_map)
 
   tags = merge(local.generated_tags, local.input.tags)
 
@@ -122,11 +113,11 @@ locals {
 
   tags_context = {
     namespace   = local.namespace
-    tenant      = local.tenant
+    region      = local.location
+    application = local.application
     environment = local.environment
-    stage       = local.stage
-    # For AWS we need `Name` to be disambiguated since it has a special meaning
-    name       = local.id
+    # For AWS we need `Application` to be disambiguated since it has a special meaning
+    id         = local.id
     attributes = local.id_context.attributes
   }
 
@@ -138,12 +129,13 @@ locals {
   }
 
   id_context = {
-    namespace   = local.namespace
-    tenant      = local.tenant
-    environment = local.environment
-    stage       = local.stage
-    name        = local.name
-    attributes  = join(local.delimiter, local.attributes)
+    namespace        = local.namespace
+    location         = local.location
+    location_code    = local.location_code
+    environment      = local.environment
+    environment_code = local.environment_code
+    application      = local.application
+    attributes       = join(local.delimiter, local.attributes)
   }
 
   labels = [for l in local.label_order : local.id_context[l] if length(local.id_context[l]) > 0]
@@ -165,20 +157,31 @@ locals {
   id_short = substr("${local.id_truncated}${local.id_hash}", 0, local.id_length_limit)
   id       = local.id_length_limit != 0 && length(local.id_full) > local.id_length_limit ? local.id_short : local.id_full
 
+  id_with_resource_codes = { for k, v in local.resource_codes :
+    k => format("%s%s%s", v, "-", local.id, )
+  }
+
+  id_for_storage_account = format("%s%s", local.resource_codes["storage_account"], substr(sha256(local.id), 0, 24 - length(local.resource_codes["storage_account"])))
+  id_for_keyvault        = format("%s%s", local.resource_codes["key_vault"], substr(sha256(local.id), 0, 23 - length(local.resource_codes["key_vault"])))
+
 
   # Context of this label to pass to other label modules
   output_context = {
     enabled             = local.enabled
     namespace           = local.namespace
-    tenant              = local.tenant
+    location            = local.location
+    location_code       = local.location_code
     environment         = local.environment
-    stage               = local.stage
-    name                = local.name
+    environment_code    = local.environment_code
+    application         = local.application
     delimiter           = local.delimiter
     attributes          = local.attributes
     tags                = local.tags
     additional_tag_map  = local.additional_tag_map
     label_order         = local.label_order
+    region_codes        = local.region_codes
+    resource_codes      = local.resource_codes
+    environment_codes   = local.environment_codes
     regex_replace_chars = local.regex_replace_chars
     id_length_limit     = local.id_length_limit
     label_key_case      = local.label_key_case

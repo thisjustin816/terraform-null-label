@@ -3,6 +3,21 @@ output "id" {
   description = "Disambiguated ID string restricted to `id_length_limit` characters in total"
 }
 
+output "id_resource" {
+  value       = local.enabled ? local.id_with_resource_codes : {}
+  description = "Disambiguated ID string with resource code prefixes restricted to `id_length_limit` characters in total"
+}
+
+output "id_for_keyvault" {
+  value       = local.enabled ? local.id_for_keyvault : ""
+  description = "Disambiguated ID string generating unique name for Azure Key Vault."
+}
+
+output "id_for_storage_account" {
+  value       = local.enabled ? local.id_for_storage_account : ""
+  description = "Disambiguated ID string generating unique name for Azure Storage Accounts"
+}
+
 output "id_full" {
   value       = local.enabled ? local.id_full : ""
   description = "ID string not restricted in length"
@@ -18,29 +33,24 @@ output "namespace" {
   description = "Normalized namespace"
 }
 
-output "tenant" {
-  value       = local.enabled ? local.tenant : ""
-  description = "Normalized tenant"
-}
-
 output "environment" {
   value       = local.enabled ? local.environment : ""
   description = "Normalized environment"
 }
 
-output "name" {
-  value       = local.enabled ? local.name : ""
-  description = "Normalized name"
+output "location" {
+  value       = local.enabled ? local.location : ""
+  description = "Normalized location"
 }
 
-output "stage" {
-  value       = local.enabled ? local.stage : ""
-  description = "Normalized stage"
+output "application" {
+  value       = local.enabled ? local.application : ""
+  description = "Normalized application"
 }
 
 output "delimiter" {
   value       = local.enabled ? local.delimiter : ""
-  description = "Delimiter between `namespace`, `tenant`, `environment`, `stage`, `name` and `attributes`"
+  description = "Delimiter between `namespace`, `tenant`, `environment`, `purpose`, `application` and `attributes`"
 }
 
 output "attributes" {
@@ -88,15 +98,14 @@ output "descriptors" {
 }
 
 output "normalized_context" {
-  value       = local.output_context
+  value       = local.output_context_raw
   description = "Normalized context of this module"
 }
 
 output "context" {
-  value       = local.input
+  value       = local.output_context_serialized
   description = <<-EOT
   Merged but otherwise unmodified input to this module, to be used as context input to other modules.
   Note: this version will have null values as defaults, not the values actually used as defaults.
 EOT
 }
-

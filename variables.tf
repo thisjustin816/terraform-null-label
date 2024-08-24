@@ -1,48 +1,7 @@
 variable "context" {
-  type = any
-  default = {
-    enabled             = true
-    namespace           = null
-    tenant              = null
-    environment         = null
-    stage               = null
-    name                = null
-    delimiter           = null
-    attributes          = []
-    tags                = {}
-    additional_tag_map  = {}
-    regex_replace_chars = null
-    label_order         = []
-    id_length_limit     = null
-    label_key_case      = null
-    label_value_case    = null
-    descriptor_formats  = {}
-    # Note: we have to use [] instead of null for unset lists due to
-    # https://github.com/hashicorp/terraform/issues/28137
-    # which was not fixed until Terraform 1.0.0,
-    # but we want the default to be all the labels in `label_order`
-    # and we want users to be able to prevent all tag generation
-    # by setting `labels_as_tags` to `[]`, so we need
-    # a different sentinel to indicate "default"
-    labels_as_tags = ["unset"]
-  }
-  description = <<-EOT
-    Single object for setting entire context at once.
-    See description of individual variables for details.
-    Leave string and numeric variables as `null` to use default value.
-    Individual variable settings (non-null) override settings in context object,
-    except for attributes, tags, and additional_tag_map, which are merged.
-  EOT
-
-  validation {
-    condition     = lookup(var.context, "label_key_case", null) == null ? true : contains(["lower", "title", "upper"], var.context["label_key_case"])
-    error_message = "Allowed values: `lower`, `title`, `upper`."
-  }
-
-  validation {
-    condition     = lookup(var.context, "label_value_case", null) == null ? true : contains(["lower", "title", "upper", "none"], var.context["label_value_case"])
-    error_message = "Allowed values: `lower`, `title`, `upper`, `none`."
-  }
+  type        = string
+  description = "A context to append to. Base64 encoded json is expected."
+  default     = "e30=" # base64ecode(jsonencode({}))
 }
 
 variable "enabled" {
@@ -51,38 +10,51 @@ variable "enabled" {
   description = "Set to false to prevent the module from creating any resources"
 }
 
+variable "resource_codes" {
+  type    = map(string)
+  default = null
+}
+
+variable "namespace_codes" {
+  type    = map(map(string))
+  default = null
+}
+
+variable "region_codes" {
+  type    = map(string)
+  default = null
+}
+
+variable "environment_codes" {
+  type    = map(string)
+  default = null
+}
+
 variable "namespace" {
   type        = string
   default     = null
-  description = "ID element. Usually an abbreviation of your organization name, e.g. 'eg' or 'cp', to help ensure generated IDs are globally unique"
+  description = "ID element. Usually an abbreviation of your namespace name, e.g. 'eg' or 'cp', to help ensure generated IDs are globally unique"
 }
 
-variable "tenant" {
-  type        = string
-  default     = null
-  description = "ID element _(Rarely used, not included by default)_. A customer identifier, indicating who this instance of a resource is for"
-}
-
-variable "environment" {
-  type        = string
-  default     = null
-  description = "ID element. Usually used for region e.g. 'uw2', 'us-west-2', OR role 'prod', 'staging', 'dev', 'UAT'"
-}
-
-variable "stage" {
-  type        = string
-  default     = null
-  description = "ID element. Usually used to indicate role, e.g. 'prod', 'staging', 'source', 'build', 'test', 'deploy', 'release'"
-}
-
-variable "name" {
+variable "application" {
   type        = string
   default     = null
   description = <<-EOT
     ID element. Usually the component or solution name, e.g. 'app' or 'jenkins'.
     This is the only ID element not also included as a `tag`.
-    The "name" tag is set to the full `id` string. There is no tag with the value of the `name` input.
+    The "application" tag is set to the full `id` string. There is no tag with the value of the `application` input.
     EOT
+}
+
+variable "location" {
+  type        = string
+  default     = null
+  description = "ID element. used for region e.g. 'eastus', 'us-west-2', 'northeurope'"
+}
+variable "environment" {
+  type        = string
+  default     = null
+  description = "ID element. Used for environment 'prod', 'staging', 'dev', 'test'"
 }
 
 variable "delimiter" {
@@ -114,7 +86,7 @@ variable "labels_as_tags" {
     Tags with empty values will not be included in the `tags` output.
     Set to `[]` to suppress all generated tags.
     **Notes:**
-      The value of the `name` tag, if included, will be the `id`, not the `name`.
+      The value of the `application` tag, if included, will be the `id`, not the `application`.
       Unlike other `null-label` inputs, the initial setting of `labels_as_tags` cannot be
       changed in later chained modules. Attempts to change it will be silently ignored.
     EOT
@@ -144,7 +116,7 @@ variable "label_order" {
   default     = null
   description = <<-EOT
     The order in which the labels (ID elements) appear in the `id`.
-    Defaults to ["namespace", "environment", "stage", "name", "attributes"].
+    Defaults to ["namespace", "environment", "purpose", "application", "attributes"].
     You can omit any of the 6 labels ("tenant" is the 6th), but at least one must be present.
     EOT
 }
