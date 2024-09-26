@@ -19,7 +19,7 @@ locals {
     firewall                              = "afw"   # Azure Firewall
     firewall_policy                       = "afwp"  # Azure Firewall Policy
     express_route_circuit                 = "erc"   # Azure Express Route Circuit
-    frontdoor                             = "fd"    # Azure Front Door
+    frontdoor                             = "afd"   # Azure Front Door
     frontdoor_firewall_policy             = "fdfp"  # Azure Front Door Firewall Policy
     lb_internal                           = "lbi"   # Azure load balancer (Internal)
     lb_external                           = "lbe"   # Azure load balancer (External)
@@ -32,7 +32,7 @@ locals {
     network_security_rule                 = "nsgsr" # Azure network security rule
     network_watcher                       = "nw"    # Azure network watcher
     private_link_service                  = "pl"    # Azure Private Link Service
-    private_endpoint                      = "pendp" # Azure Private Endpoint
+    private_endpoint                      = "pep"   # Azure Private Endpoint
     public_ip                             = "pip"   # Public IP
     public_ip_prefix                      = "ippre" # Public IP Prefix
     route_filter                          = "rf"    # Azure Route Filter
@@ -54,7 +54,7 @@ locals {
 
     #Compute and Web
     app_service_environment        = "ase"    # App Service Environment
-    app_service_plan               = "plan"   # App Service plan
+    app_service_plan               = "asp"    # App Service plan
     app_service                    = "asvc"   # App Service
     availability_set               = "avail"  # Azure Availability Set
     arc_enabled_server             = "arcs"   # Azure Arc Enabled Server
@@ -70,7 +70,7 @@ locals {
     snapshot                       = "snap"   # Azure Snapshot
     spring_cloud_service           = "asc"    # Azure Spring Cloud
     static_site                    = "stapp"  # Azure Static Site
-    virtual_machine                = "svr"    # Azure Virtual Machine
+    virtual_machine                = "vm"     # Azure Virtual Machine
     virtual_machine_scale_set      = "vmss"   # Azure VM scaling set
     storage_account_vm             = "stvm"   # Azure storage account (VM)
     web_app                        = "app"    # Azure Web App
@@ -85,20 +85,20 @@ locals {
     #Databases
     cosmosdb_account                   = "cosmos"  # CosmosDB account
     redis_cache                        = "redis"   # Redis Cache
-    sql_server                         = "sql"     # Mycrosoft SQL Azure Database Server
-    sql_database                       = "sqldb"   # Mycrosoft SQL Azure Database Server Database
-    sql_elasticpool                    = "sqlep"   # Mycrosoft SQL Azure Database Server Elastic Pool
-    synapse_workspace                  = "syn"     # Azure Synapse Workspace
+    sql_server                         = "sql"     # Microsoft SQL Azure Database Server
+    sql_database                       = "sqldb"   # Microsoft SQL Azure Database Server Database
+    sql_elasticpool                    = "sqlep"   # Microsoft SQL Azure Database Server Elastic Pool
+    synapse_workspace                  = "synw"    # Azure Synapse Workspace
     stream_analytics_synapse_workspace = "synw"    # Azure Stream Analytics Synapse Workspace
     synapse_sql_pool                   = "syndp"   # Azure Synapse SQL Dedicated Pool
-    synapse_spark_pool                 = "synsp"   # Azure Synapse Spark  Pool
-    mssql_server                       = "mysql"   # Azure MySQL database server
-    mssql_database                     = "mysqldb" # Azure MySQL database
+    synapse_spark_pool                 = "synsp"   # Azure Synapse Spark Pool
+    mysql_server                       = "mysql"   # Azure MySQL database server
+    mysql_database                     = "mysqldb" # Azure MySQL database
     postgres_server                    = "psql"    # Azure Postgres database server
     sql_managed_database               = "sqlmdb"  # Azure SQL Managed Database
     sql_managed_instance               = "sqlmi"   # Azure SQL Managed Instance
 
-    #Storage 
+    #Storage
     storage_account      = "st"   # Azure storage account
     storage_account_blob = "blob" # Azure blob storage container
 
@@ -130,17 +130,17 @@ locals {
     signalr_service   = "sigr"  # Azure SignalR
 
     #Integration
-    logic_app_integration_account = "ia"   # Azure Logic App Integration Account
-    logic_app_workflow            = "lapp" # Azure Logic App Workflow
-    servicebus_namespace          = "sb"   # Service Bus namespace
-    servicebus_queue              = "sbq"  # Service Bus Queue
-    servicebus_topic              = "sbt"  # Service Bus Topic
+    logic_app_integration_account = "ia"    # Azure Logic App Integration Account
+    logic_app_workflow            = "logic" # Azure Logic App Workflow
+    servicebus_namespace          = "sbns"  # Service Bus namespace
+    servicebus_queue              = "sbq"   # Service Bus Queue
+    servicebus_topic              = "sbt"   # Service Bus Topic
 
     #Management and Governance
     automation_account               = "aa"      # Automation Accounts
     application_insights             = "appi"    # App Insights
     monitor_metric_alert             = "azalert" # Azure Monitor Metric Alert
-    monitor_action_rule_action_group = "ag"      # Azuer Monitor Action Group
+    monitor_action_rule_action_group = "ag"      # Azure Monitor Action Group
     monitor_diagnostics_setting      = "ds"      # Diagnostic setting
     purview_account                  = "pview"   # Azure Purview Account
     blueprint_definition             = "bp"      # Azure Blueprint Definition
