@@ -158,7 +158,7 @@ locals {
   id       = local.id_length_limit != 0 && length(local.id_full) > local.id_length_limit ? local.id_short : local.id_full
 
   id_with_resource_codes = { for k, v in local.resource_codes :
-    k => format("%s%s%s", v, "-", local.id, )
+    k => format("%s%s%s", v, local.delimiter, local.id, )
   }
 
   id_for_storage_account = format("%s%s", local.resource_codes["storage_account"], substr(sha256(local.id), 0, 24 - length(local.resource_codes["storage_account"])))
