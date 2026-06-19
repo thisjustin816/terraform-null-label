@@ -11,23 +11,65 @@ variable "enabled" {
 }
 
 variable "resource_codes" {
-  type    = map(string)
-  default = null
+  type        = map(string)
+  default     = null
+  description = "Resource type code overrides and additions used by `id_resource` outputs."
 }
 
-variable "namespace_codes" {
-  type    = map(map(string))
-  default = null
+variable "resource_label_rules" {
+  type        = any
+  default     = null
+  description = <<-EOT
+    Resource-specific naming rules keyed by resource type. Each rule can override the generated resource code,
+    code position (`prefix`, `suffix`, or `none`), delimiter, regular expression for invalid characters, length
+    limit, casing, hash length, whether to include region, required suffix, and whether the resource name should
+    include the deterministic global uniqueness hash.
+    EOT
+}
+
+variable "resource_hash_length" {
+  type        = number
+  default     = null
+  description = "Number of characters to use from the deterministic resource hash suffix."
+
+  validation {
+    condition     = var.resource_hash_length == null ? true : var.resource_hash_length >= 4 && var.resource_hash_length <= 32
+    error_message = "The resource_hash_length must be between 4 and 32 characters when supplied."
+  }
+}
+
+variable "resource_hash_values" {
+  type        = list(string)
+  default     = null
+  description = "Additional stable values included in the deterministic resource hash seed."
+}
+
+variable "aws_resource_types" {
+  type        = set(string)
+  default     = null
+  description = <<-EOT
+    Additional AWS Terraform resource type names to include in resource-code outputs.
+    Values can include or omit the aws_ prefix, for example aws_s3_bucket or s3_bucket.
+    EOT
+
+  validation {
+    condition = var.aws_resource_types == null ? true : !contains([
+      for resource_type in var.aws_resource_types : can(regex("^(aws_)?[a-z0-9_]+$", resource_type))
+    ], false)
+    error_message = "Each aws_resource_types value must be a Terraform-style AWS resource type such as aws_s3_bucket or s3_bucket."
+  }
 }
 
 variable "region_codes" {
-  type    = map(string)
-  default = null
+  type        = map(string)
+  default     = null
+  description = "Region-to-code map used by the `region_code` label element."
 }
 
 variable "environment_codes" {
-  type    = map(string)
-  default = null
+  type        = map(string)
+  default     = null
+  description = "Environment-to-code map used by the `environment_code` label element."
 }
 
 variable "namespace" {
@@ -41,20 +83,21 @@ variable "application" {
   default     = null
   description = <<-EOT
     ID element. Usually the component or solution name, e.g. 'app' or 'jenkins'.
-    This is the only ID element not also included as a `tag`.
-    The "application" tag is set to the full `id` string. There is no tag with the value of the `application` input.
+    The `application` value is included in `id` and, when `application` is one of
+    `labels_as_tags`, is also set as the `Application` tag. The full `id` string is
+    additionally exposed as the `Id` tag.
     EOT
 }
 
-variable "location" {
+variable "region" {
   type        = string
   default     = null
-  description = "ID element. used for region e.g. 'eastus', 'us-west-2', 'northeurope'"
+  description = "ID element. Used for cloud region, e.g. 'eastus', 'us-west-2', or 'northeurope'."
 }
 variable "environment" {
   type        = string
   default     = null
-  description = "ID element. Used for environment 'prod', 'staging', 'dev', 'test'"
+  description = "ID element. Used for environment, e.g. 'prod', 'staging', 'dev', or 'test'."
 }
 
 variable "delimiter" {
@@ -86,7 +129,8 @@ variable "labels_as_tags" {
     Tags with empty values will not be included in the `tags` output.
     Set to `[]` to suppress all generated tags.
     **Notes:**
-      The value of the `application` tag, if included, will be the `id`, not the `application`.
+      The `application` tag, if included, is the `application` value; the full `id`
+      string is exposed separately as the `Id` tag.
       Unlike other `null-label` inputs, the initial setting of `labels_as_tags` cannot be
       changed in later chained modules. Attempts to change it will be silently ignored.
     EOT
@@ -116,8 +160,9 @@ variable "label_order" {
   default     = null
   description = <<-EOT
     The order in which the labels (ID elements) appear in the `id`.
-    Defaults to ["namespace", "environment", "purpose", "application", "attributes"].
-    You can omit any of the 6 labels ("tenant" is the 6th), but at least one must be present.
+    Defaults to ["namespace", "application", "region_code", "environment_code", "attributes"].
+    Supported label elements are `namespace`, `application`, `region`, `region_code`,
+    `environment`, `environment_code`, and `attributes`.
     EOT
 }
 

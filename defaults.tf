@@ -3,25 +3,27 @@ locals {
     enabled            = true
     namespace          = null
     environment        = null
-    location           = null
-    stage              = null
+    region             = null
     application        = null
     delimiter          = "-"
     attributes         = []
     tags               = {}
     additional_tag_map = {}
 
-    label_order         = ["namespace", "application", "location_code", "environment_code", "attributes"]
-    regex_replace_chars = "/[^-a-zA-Z0-9]/"
-    delimiter           = "-"
-    environment_codes   = local.default_environment_codes
-    region_codes        = local.default_region_codes
-    resource_codes      = local.default_resource_codes
-    replacement         = ""
-    id_length_limit     = 0
-    id_hash_length      = 5
-    label_key_case      = "title"
-    label_value_case    = "lower"
+    label_order          = ["namespace", "application", "region_code", "environment_code", "attributes"]
+    regex_replace_chars  = "/[^-a-zA-Z0-9]/"
+    environment_codes    = local.default_environment_codes
+    region_codes         = local.default_region_codes
+    resource_codes       = local.default_resource_codes
+    resource_label_rules = {}
+    resource_hash_length = 8
+    resource_hash_values = []
+    aws_resource_types   = []
+    replacement          = ""
+    id_length_limit      = 0
+    id_hash_length       = 5
+    label_key_case       = "title"
+    label_value_case     = "lower"
 
     descriptor_formats = {}
     # Note: we have to use [] instead of null for unset lists due to

@@ -5,7 +5,22 @@ output "id" {
 
 output "id_resource" {
   value       = local.enabled ? local.id_with_resource_codes : {}
-  description = "Disambiguated ID string with resource code prefixes restricted to `id_length_limit` characters in total"
+  description = "Resource-specific ID strings with resource codes, naming restrictions, length limits, and required global hash suffixes applied."
+}
+
+output "id_resource_unique" {
+  value       = local.enabled ? local.resource_label_unique_ids : {}
+  description = "Resource-specific ID strings with deterministic hash suffixes applied, including for resources that do not require global uniqueness."
+}
+
+output "resource_hash" {
+  value       = local.enabled ? local.resource_hash : ""
+  description = "Deterministic hash base used by resource labels that need a global uniqueness suffix."
+}
+
+output "resource_label_rules" {
+  value       = local.enabled ? local.normalized_resource_label_rules : {}
+  description = "Normalized resource naming rules used to produce the resource-specific IDs."
 }
 
 output "id_for_keyvault" {
@@ -38,9 +53,9 @@ output "environment" {
   description = "Normalized environment"
 }
 
-output "location" {
-  value       = local.enabled ? local.location : ""
-  description = "Normalized location"
+output "region" {
+  value       = local.enabled ? local.region : ""
+  description = "Normalized region"
 }
 
 output "application" {
@@ -50,7 +65,7 @@ output "application" {
 
 output "delimiter" {
   value       = local.enabled ? local.delimiter : ""
-  description = "Delimiter between `namespace`, `tenant`, `environment`, `purpose`, `application` and `attributes`"
+  description = "Delimiter between generated ID elements."
 }
 
 output "attributes" {
@@ -105,7 +120,6 @@ output "normalized_context" {
 output "context" {
   value       = local.output_context_serialized
   description = <<-EOT
-  Merged but otherwise unmodified input to this module, to be used as context input to other modules.
-  Note: this version will have null values as defaults, not the values actually used as defaults.
+  Base64-encoded normalized context of this module, to be used as context input to other label modules.
 EOT
 }

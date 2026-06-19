@@ -1,97 +1,58 @@
 #
-# ONLY EDIT THIS FILE IN github.com/cloudposse/terraform-null-label
+# ONLY EDIT THIS FILE IN github.com/thisjustin816/terraform-null-label
 # All other instances of this file should be a copy of that one
 #
-#
-# Copy this file from https://github.com/cloudposse/terraform-null-label/blob/master/exports/context.tf
-# and then place it in your Terraform module to automatically get
-# Cloud Posse's standard configuration inputs suitable for passing
-# to Cloud Posse modules.
-#
-# curl -sL https://raw.githubusercontent.com/cloudposse/terraform-null-label/master/exports/context.tf -o context.tf
+# Copy this file into your Terraform module to get this fork's standard
+# label, tag, and resource-naming inputs, suitable for composing names and
+# passing context to other modules built on this fork.
 #
 # Modules should access the whole context as `module.this.context`
-# to get the input variables with nulls for defaults,
-# for example `context = module.this.context`,
-# and access individual variables as `module.this.<var>`,
-# with final values filled in.
+# (a base64-encoded string) and pass it on with `context = module.this.context`.
+# Access individual final values as `module.this.<var>`, for example
+# `module.this.id` or `module.this.id_resource["aws_s3_bucket"]`.
 #
-# For example, when using defaults, `module.this.context.delimiter`
-# will be null, and `module.this.delimiter` will be `-` (hyphen).
+# For example, when using defaults, `module.this.context` decodes to the
+# default context and `module.this.delimiter` will be `-` (hyphen).
 #
 
 module "this" {
-  source  = "cloudposse/label/null"
-  version = "0.25.0" # requires Terraform >= 0.13.0
+  # This fork is not published to the Terraform Registry. Pin to a release tag
+  # for stable consumers instead of `main`, for example ?ref=v1.0.0
+  source = "git::https://github.com/thisjustin816/terraform-null-label.git?ref=main"
 
-  enabled             = var.enabled
-  namespace           = var.namespace
-  tenant              = var.tenant
-  environment         = var.environment
-  stage               = var.stage
-  name                = var.name
-  delimiter           = var.delimiter
-  attributes          = var.attributes
-  tags                = var.tags
-  additional_tag_map  = var.additional_tag_map
-  label_order         = var.label_order
-  regex_replace_chars = var.regex_replace_chars
-  id_length_limit     = var.id_length_limit
-  label_key_case      = var.label_key_case
-  label_value_case    = var.label_value_case
-  descriptor_formats  = var.descriptor_formats
-  labels_as_tags      = var.labels_as_tags
+  enabled              = var.enabled
+  namespace            = var.namespace
+  application          = var.application
+  region               = var.region
+  environment          = var.environment
+  delimiter            = var.delimiter
+  attributes           = var.attributes
+  tags                 = var.tags
+  additional_tag_map   = var.additional_tag_map
+  label_order          = var.label_order
+  regex_replace_chars  = var.regex_replace_chars
+  id_length_limit      = var.id_length_limit
+  label_key_case       = var.label_key_case
+  label_value_case     = var.label_value_case
+  descriptor_formats   = var.descriptor_formats
+  labels_as_tags       = var.labels_as_tags
+  resource_codes       = var.resource_codes
+  resource_label_rules = var.resource_label_rules
+  resource_hash_length = var.resource_hash_length
+  resource_hash_values = var.resource_hash_values
+  aws_resource_types   = var.aws_resource_types
+  region_codes         = var.region_codes
+  environment_codes    = var.environment_codes
 
   context = var.context
 }
 
-# Copy contents of cloudposse/terraform-null-label/variables.tf here
+# Copy contents of this fork's variables.tf here
 
 variable "context" {
-  type = any
-  default = {
-    enabled             = true
-    namespace           = null
-    tenant              = null
-    environment         = null
-    stage               = null
-    name                = null
-    delimiter           = null
-    attributes          = []
-    tags                = {}
-    additional_tag_map  = {}
-    regex_replace_chars = null
-    label_order         = []
-    id_length_limit     = null
-    label_key_case      = null
-    label_value_case    = null
-    descriptor_formats  = {}
-    # Note: we have to use [] instead of null for unset lists due to
-    # https://github.com/hashicorp/terraform/issues/28137
-    # which was not fixed until Terraform 1.0.0,
-    # but we want the default to be all the labels in `label_order`
-    # and we want users to be able to prevent all tag generation
-    # by setting `labels_as_tags` to `[]`, so we need
-    # a different sentinel to indicate "default"
-    labels_as_tags = ["unset"]
-  }
-  description = <<-EOT
-    Single object for setting entire context at once.
-    See description of individual variables for details.
-    Leave string and numeric variables as `null` to use default value.
-    Individual variable settings (non-null) override settings in context object,
-    except for attributes, tags, and additional_tag_map, which are merged.
-  EOT
-
-  validation {
-    condition     = lookup(var.context, "label_key_case", null) == null ? true : contains(["lower", "title", "upper"], var.context["label_key_case"])
-    error_message = "Allowed values: `lower`, `title`, `upper`."
-  }
-
-  validation {
-    condition     = lookup(var.context, "label_value_case", null) == null ? true : contains(["lower", "title", "upper", "none"], var.context["label_value_case"])
-    error_message = "Allowed values: `lower`, `title`, `upper`, `none`."
-  }
+  type        = string
+  description = "A context to append to. Base64 encoded json is expected."
+  default     = "e30=" # base64encode(jsonencode({}))
 }
 
 variable "enabled" {
@@ -103,35 +64,30 @@ variable "enabled" {
 variable "namespace" {
   type        = string
   default     = null
-  description = "ID element. Usually an abbreviation of your organization name, e.g. 'eg' or 'cp', to help ensure generated IDs are globally unique"
+  description = "ID element. Usually an abbreviation of your namespace name, e.g. 'eg' or 'cp', to help ensure generated IDs are globally unique"
 }
 
-variable "tenant" {
+variable "application" {
   type        = string
   default     = null
-  description = "ID element _(Rarely used, not included by default)_. A customer identifier, indicating who this instance of a resource is for"
+  description = <<-EOT
+    ID element. Usually the component or solution name, e.g. 'app' or 'jenkins'.
+    The `application` value is included in `id` and, when `application` is one of
+    `labels_as_tags`, is also set as the `Application` tag. The full `id` string is
+    additionally exposed as the `Id` tag.
+    EOT
+}
+
+variable "region" {
+  type        = string
+  default     = null
+  description = "ID element. Used for cloud region, e.g. 'eastus', 'us-west-2', or 'northeurope'."
 }
 
 variable "environment" {
   type        = string
   default     = null
-  description = "ID element. Usually used for region e.g. 'uw2', 'us-west-2', OR role 'prod', 'staging', 'dev', 'UAT'"
-}
-
-variable "stage" {
-  type        = string
-  default     = null
-  description = "ID element. Usually used to indicate role, e.g. 'prod', 'staging', 'source', 'build', 'test', 'deploy', 'release'"
-}
-
-variable "name" {
-  type        = string
-  default     = null
-  description = <<-EOT
-    ID element. Usually the component or solution name, e.g. 'app' or 'jenkins'.
-    This is the only ID element not also included as a `tag`.
-    The "name" tag is set to the full `id` string. There is no tag with the value of the `name` input.
-    EOT
+  description = "ID element. Used for environment, e.g. 'prod', 'staging', 'dev', or 'test'."
 }
 
 variable "delimiter" {
@@ -163,7 +119,8 @@ variable "labels_as_tags" {
     Tags with empty values will not be included in the `tags` output.
     Set to `[]` to suppress all generated tags.
     **Notes:**
-      The value of the `name` tag, if included, will be the `id`, not the `name`.
+      The `application` tag, if included, is the `application` value; the full `id`
+      string is exposed separately as the `Id` tag.
       Unlike other `null-label` inputs, the initial setting of `labels_as_tags` cannot be
       changed in later chained modules. Attempts to change it will be silently ignored.
     EOT
@@ -193,8 +150,9 @@ variable "label_order" {
   default     = null
   description = <<-EOT
     The order in which the labels (ID elements) appear in the `id`.
-    Defaults to ["namespace", "environment", "stage", "name", "attributes"].
-    You can omit any of the 6 labels ("tenant" is the 6th), but at least one must be present.
+    Defaults to ["namespace", "application", "region_code", "environment_code", "attributes"].
+    Supported label elements are `namespace`, `application`, `region`, `region_code`,
+    `environment`, `environment_code`, and `attributes`.
     EOT
 }
 
@@ -276,4 +234,66 @@ variable "descriptor_formats" {
     EOT
 }
 
-#### End of copy of cloudposse/terraform-null-label/variables.tf
+variable "resource_codes" {
+  type        = map(string)
+  default     = null
+  description = "Resource type code overrides and additions used by `id_resource` outputs."
+}
+
+variable "resource_label_rules" {
+  type        = any
+  default     = null
+  description = <<-EOT
+    Resource-specific naming rules keyed by resource type. Each rule can override the generated resource code,
+    code position (`prefix`, `suffix`, or `none`), delimiter, regular expression for invalid characters, length
+    limit, casing, hash length, whether to include region, required suffix, and whether the resource name should
+    include the deterministic global uniqueness hash.
+    EOT
+}
+
+variable "resource_hash_length" {
+  type        = number
+  default     = null
+  description = "Number of characters to use from the deterministic resource hash suffix."
+
+  validation {
+    condition     = var.resource_hash_length == null ? true : var.resource_hash_length >= 4 && var.resource_hash_length <= 32
+    error_message = "The resource_hash_length must be between 4 and 32 characters when supplied."
+  }
+}
+
+variable "resource_hash_values" {
+  type        = list(string)
+  default     = null
+  description = "Additional stable values included in the deterministic resource hash seed."
+}
+
+variable "aws_resource_types" {
+  type        = set(string)
+  default     = null
+  description = <<-EOT
+    Additional AWS Terraform resource type names to include in resource-code outputs.
+    Values can include or omit the aws_ prefix, for example aws_s3_bucket or s3_bucket.
+    EOT
+
+  validation {
+    condition = var.aws_resource_types == null ? true : !contains([
+      for resource_type in var.aws_resource_types : can(regex("^(aws_)?[a-z0-9_]+$", resource_type))
+    ], false)
+    error_message = "Each aws_resource_types value must be a Terraform-style AWS resource type such as aws_s3_bucket or s3_bucket."
+  }
+}
+
+variable "region_codes" {
+  type        = map(string)
+  default     = null
+  description = "Region-to-code map used by the `region_code` label element."
+}
+
+variable "environment_codes" {
+  type        = map(string)
+  default     = null
+  description = "Environment-to-code map used by the `environment_code` label element."
+}
+
+#### End of copy of this fork's variables.tf

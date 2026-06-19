@@ -1,5 +1,7 @@
 locals {
-  default_region_codes = {
+  default_region_codes = merge(local.default_azure_region_codes, local.default_aws_region_codes)
+
+  default_azure_region_codes = {
     australiacentral   = "ac"
     australiacentral2  = "ac2"
     australiaeast      = "ae"
@@ -23,7 +25,7 @@ locals {
     koreasouth         = "ks"
     northcentralus     = "ncus"
     northeurope        = "ne"
-    norwayeast         = "ne"
+    norwayeast         = "noe"
     norwaywest         = "nw"
     southafricanorth   = "san"
     southafricawest    = "saw"

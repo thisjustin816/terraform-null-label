@@ -1,0 +1,20 @@
+# Atmos configuration for README generation.
+
+docs:
+  generate:
+    readme:
+      base-dir: .
+      input:
+        - "./README.yaml"
+      template: "./.github/README.md.gotmpl"
+      output: "./README.md"
+      terraform:
+        source: .
+        enabled: true
+        format: "markdown table"
+        show_providers: false
+        show_inputs: true
+        show_outputs: true
+        sort_by: "name"
+        hide_empty: false
+        indent_level: 2
