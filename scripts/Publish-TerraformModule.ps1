@@ -4,14 +4,15 @@ Runs release checks and optionally tags this Terraform module.
 
 .DESCRIPTION
 Runs the generated README step, Terraform formatting, Terraform validation, and the focused
-resource-aware Go test. When Version is provided, the script creates an annotated Git tag after
-the checks pass and the working tree is clean. Use Push to push the tag to origin.
+module Go tests. When Version is provided, the script creates an annotated Git tag after the
+checks pass and the working tree is clean. Release tags are immutable, so the script fails when
+the requested tag already exists. Use Push to check origin and push the new tag.
 
 .PARAMETER Version
 Semver release tag to create, such as v1.0.0. If the value omits the leading v, the script adds it.
 
 .PARAMETER Push
-Pushes the release tag to origin after creating it.
+Verifies the release tag does not exist on origin, then pushes the new tag.
 
 .PARAMETER SkipReadme
 Skips README generation with Atmos.
@@ -137,19 +138,30 @@ begin {
 
     <#
     .SYNOPSIS
-    Internal: Verifies that the release tag does not already exist.
+    Internal: Verifies that the release tag does not exist locally or on origin.
     #>
     function Assert-TagAvailable {
         [CmdletBinding()]
         param(
             [Parameter(Mandatory = $true)]
-            [string]$TagName
+            [string]$TagName,
+            [switch]$CheckOrigin
         )
 
         $matchingTags = @(Invoke-GitOutput -ArgumentList @('tag', '--list', $TagName))
 
         if ($matchingTags.Count -gt 0) {
-            throw "Git tag '$TagName' already exists."
+            throw "Git tag '$TagName' already exists. Release tags cannot be reused."
+        }
+
+        if ($CheckOrigin) {
+            $remoteTags = @(
+                Invoke-GitOutput -ArgumentList @('ls-remote', '--tags', 'origin', "refs/tags/$TagName")
+            )
+
+            if ($remoteTags.Count -gt 0) {
+                throw "Git tag '$TagName' already exists on origin. Release tags cannot be reused."
+            }
         }
     }
 }
@@ -188,15 +200,25 @@ process {
         -WorkingDirectory $RepoRoot
     Invoke-NativeCommand `
         -FilePath 'terraform' `
-        -ArgumentList @('init', '-backend=false') `
+        -ArgumentList @('init', '-backend=false', '-input=false') `
         -WorkingDirectory $RepoRoot
     Invoke-NativeCommand `
         -FilePath 'terraform' `
         -ArgumentList @('validate') `
         -WorkingDirectory $RepoRoot
+
+    $goTestArguments = @(
+        'test'
+        '-count=1'
+        '-timeout'
+        '20m'
+        '-run'
+        '^(TestExamplesResourceAware|TestLabelOrderValidation)$'
+        '.'
+    )
     Invoke-NativeCommand `
         -FilePath 'go' `
-        -ArgumentList @('test', '-count=1', '-timeout', '20m', '-run', '^TestExamplesResourceAware$', '.') `
+        -ArgumentList $goTestArguments `
         -WorkingDirectory $TestRoot
 
     if (-not $Version) {
@@ -207,21 +229,25 @@ process {
     $tagName = $Version.StartsWith('v', [StringComparison]::OrdinalIgnoreCase) ? $Version : "v$Version"
 
     Assert-CleanWorkingTree
-    Assert-TagAvailable -TagName $tagName
+    Assert-TagAvailable -TagName $tagName -CheckOrigin:$Push
 
-    $headSha = (Invoke-GitOutput -ArgumentList @('rev-parse', '--short', 'HEAD') | Select-Object -First 1)
+    $headSha = (Invoke-GitOutput -ArgumentList @('rev-parse', 'HEAD') | Select-Object -First 1)
+    $shortHeadSha = (Invoke-GitOutput -ArgumentList @('rev-parse', '--short', 'HEAD') | Select-Object -First 1)
     $createdTag = $false
 
-    if ($PSCmdlet.ShouldProcess($tagName, "Create annotated release tag at $headSha")) {
+    if ($PSCmdlet.ShouldProcess($tagName, "Create annotated release tag at $shortHeadSha")) {
         Invoke-NativeCommand -FilePath 'git' `
-            -ArgumentList @('tag', '-a', $tagName, '-m', "Release $tagName") `
+            -ArgumentList @('tag', '--annotate', $tagName, $headSha, '--message', "Release $tagName") `
             -WorkingDirectory $RepoRoot
         $createdTag = $true
-        Write-Host "Created release tag $tagName at $headSha."
+        Write-Host "Created release tag $tagName at $shortHeadSha."
     }
 
     if ($Push -and $createdTag -and $PSCmdlet.ShouldProcess('origin', "Push release tag $tagName")) {
-        Invoke-NativeCommand -FilePath 'git' -ArgumentList @('push', 'origin', $tagName) -WorkingDirectory $RepoRoot
+        Invoke-NativeCommand `
+            -FilePath 'git' `
+            -ArgumentList @('push', 'origin', "refs/tags/$tagName") `
+            -WorkingDirectory $RepoRoot
         Write-Host "Pushed release tag $tagName to origin."
     }
     elseif (-not $Push) {

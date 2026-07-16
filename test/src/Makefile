@@ -13,9 +13,9 @@ init:
 ## Run tests
 test: init
 	go mod download
-	go test -v -timeout 20m -run '^TestExamplesResourceAware$$' .
+	go test -v -timeout 20m -run '^(TestExamplesResourceAware|TestLabelOrderValidation)$$' .
 
 .PHONY : clean
 ## Clean up files
 clean:
-	rm -rf ../../examples/resource-aware/.terraform ../../examples/resource-aware/.terraform.lock.hcl
+	rm -rf ../../examples/resource-aware/.terraform ../../examples/resource-aware/.terraform.lock.hcl ../../test/fixtures/label-order-validation/.terraform ../../test/fixtures/label-order-validation/.terraform.lock.hcl

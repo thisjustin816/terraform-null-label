@@ -164,6 +164,25 @@ variable "label_order" {
     Supported label elements are `namespace`, `application`, `region`, `region_code`,
     `environment`, `environment_code`, and `attributes`.
     EOT
+
+  validation {
+    condition = var.label_order == null ? true : (
+      length(var.label_order) == length(distinct(var.label_order)) &&
+      length(setsubtract(
+        toset(var.label_order),
+        toset([
+          "namespace",
+          "application",
+          "region",
+          "region_code",
+          "environment",
+          "environment_code",
+          "attributes",
+        ])
+      )) == 0
+    )
+    error_message = "The label_order may contain only supported labels, without duplicates: namespace, application, region, region_code, environment, environment_code, and attributes."
+  }
 }
 
 variable "regex_replace_chars" {
