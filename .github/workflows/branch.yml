@@ -1,25 +1,42 @@
 ---
-name: Branch
+name: CI
+
 on:
   pull_request:
     branches:
       - main
-      - release/**
-    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches:
       - main
-      - release/v*
-    paths-ignore:
-      - '.github/**'
-      - 'docs/**'
-      - 'examples/**'
-      - 'test/**'
-      - 'README.md'
 
-permissions: {}
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  terraform-module:
-    uses: cloudposse/.github/.github/workflows/shared-terraform-module.yml@main
-    secrets: inherit
+  validate:
+    name: Validate module
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15.8
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: test/src/go.mod
+          cache-dependency-path: test/src/go.sum
+
+      - name: Validate module
+        shell: pwsh
+        run: ./scripts/Publish-TerraformModule.ps1 -SkipReadme
