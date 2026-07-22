@@ -8,6 +8,11 @@ module Go tests. When Version is provided, the script creates an annotated Git t
 checks pass and the working tree is clean. Release tags are immutable, so the script fails when
 the requested tag already exists. Use Push to check origin and push the new tag.
 
+After the immutable version tag is created, the script also moves the matching major.minor
+rolling tag (for example v1.2) to the same commit so consumers can pin a release line
+(?ref=v1.2) and pick up patches without updating the ref. The rolling tag is mutable and
+force-updated; prerelease versions (such as v1.2.0-rc.1) do not move it.
+
 .PARAMETER Version
 Semver release tag to create, such as v1.0.0. If the value omits the leading v, the script adds it.
 
@@ -164,6 +169,46 @@ begin {
             }
         }
     }
+
+    <#
+    .SYNOPSIS
+    Internal: Force-moves a mutable major.minor rolling tag to a commit and optionally pushes it.
+
+    .DESCRIPTION
+    Unlike the immutable version tag, the rolling tag (for example v1.2) is expected to move to
+    the latest patch on each release, so it is force-created locally and force-pushed to origin.
+    #>
+    function Update-RollingTag {
+        [CmdletBinding(SupportsShouldProcess = $true)]
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$RollingTag,
+            [Parameter(Mandatory = $true)]
+            [string]$CommitSha,
+            [switch]$Push
+        )
+
+        if ($PSCmdlet.ShouldProcess($RollingTag, "Move rolling tag to $CommitSha")) {
+            $tagArguments = @(
+                'tag'
+                '--force'
+                '--annotate'
+                $RollingTag
+                $CommitSha
+                '--message'
+                "Release line $RollingTag"
+            )
+            Invoke-NativeCommand -FilePath 'git' -ArgumentList $tagArguments -WorkingDirectory $RepoRoot
+            Write-Host "Moved rolling tag $RollingTag to $CommitSha."
+        }
+
+        if ($Push -and $PSCmdlet.ShouldProcess('origin', "Force-push rolling tag $RollingTag")) {
+            Invoke-NativeCommand -FilePath 'git' `
+                -ArgumentList @('push', '--force', 'origin', "refs/tags/$RollingTag") `
+                -WorkingDirectory $RepoRoot
+            Write-Host "Force-pushed rolling tag $RollingTag to origin."
+        }
+    }
 }
 
 process {
@@ -252,5 +297,12 @@ process {
     }
     elseif (-not $Push) {
         Write-Host "Tag push skipped. Publish with: git push origin $tagName"
+    }
+
+    # Move the major.minor rolling tag to this release. Skip prerelease/build-metadata versions
+    # so a line like v1.2 only ever points at a clean patch release.
+    if ($tagName -match '^(v\d+)\.(\d+)\.\d+$') {
+        $rollingTag = "$($Matches[1]).$($Matches[2])"
+        Update-RollingTag -RollingTag $rollingTag -CommitSha $headSha -Push:$Push
     }
 }
