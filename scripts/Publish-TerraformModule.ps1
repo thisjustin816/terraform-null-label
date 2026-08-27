@@ -1,39 +1,41 @@
 <#
 .SYNOPSIS
-Runs release checks and optionally tags this Terraform module.
+Validates this Terraform module and optionally publishes release tags.
 
 .DESCRIPTION
-Runs the generated README step, Terraform formatting, Terraform validation, and the focused
-module Go tests. When Version is provided, the script creates an annotated Git tag after the
-checks pass and the working tree is clean. Release tags are immutable, so the script fails when
-the requested tag already exists. Use Push to check origin and push the new tag.
-
-After the immutable version tag is created, the script also moves the matching major.minor
-rolling tag (for example v1.2) to the same commit so consumers can pin a release line
-(?ref=v1.2) and pick up patches without updating the ref. The rolling tag is mutable and
-force-updated; prerelease versions (such as v1.2.0-rc.1) do not move it.
+Checks README generation, Terraform formatting, Terraform validation, and the complete Go test
+suite. README generation is compared with the tracked file and restored before release state is
+validated. When Version is provided, the script delegates exact and moving tag reconciliation to
+Publish-ReleaseTags.ps1 after all checks pass and the working tree is clean.
 
 .PARAMETER Version
-Semver release tag to create, such as v1.0.0. If the value omits the leading v, the script adds it.
+Exact release tag in vMAJOR.MINOR.PATCH form, such as v2.0.0.
 
 .PARAMETER Push
-Verifies the release tag does not exist on origin, then pushes the new tag.
+Pushes reconciled release tags to origin in one atomic operation.
 
 .PARAMETER SkipReadme
-Skips README generation with Atmos.
+Skips README generation and drift validation.
+
+.PARAMETER SkipTerraformFormat
+Skips Terraform formatting validation.
 
 .EXAMPLE
 ./scripts/Publish-TerraformModule.ps1
 
 .EXAMPLE
-./scripts/Publish-TerraformModule.ps1 -Version v1.0.0 -Push
+./scripts/Publish-TerraformModule.ps1 -Version v2.0.0 -Push
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [ValidatePattern('^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$')]
+    [ValidatePattern('^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$')]
     [string]$Version,
+
     [switch]$Push,
-    [switch]$SkipReadme
+
+    [switch]$SkipReadme,
+
+    [switch]$SkipTerraformFormat
 )
 
 begin {
@@ -41,12 +43,24 @@ begin {
 
     $RepoRoot = Split-Path -Path $PSScriptRoot -Parent
     $TestRoot = Join-Path -Path $RepoRoot -ChildPath 'test/src'
+    $TerraformFixtureRoot = Join-Path -Path $RepoRoot -ChildPath 'test/fixtures'
+    $ReadmePath = Join-Path -Path $RepoRoot -ChildPath 'README.md'
+    $ReleaseTagScriptPath = Join-Path -Path $PSScriptRoot -ChildPath 'Publish-ReleaseTags.ps1'
+    $TerraformFormatTargets = @(
+        '.'
+        'examples'
+        'exports'
+    )
+    $TerraformFormatTargets += Get-ChildItem -LiteralPath $TerraformFixtureRoot -Directory |
+        Where-Object -FilterScript { $_.Name -cne 'v1-module' } |
+        Sort-Object -Property Name |
+        ForEach-Object -Process { "test/fixtures/$($_.Name)" }
 
     <#
     .SYNOPSIS
     Internal: Verifies that required commands are available on PATH.
     #>
-    function Assert-CommandExists {
+    function Assert-CommandAvailable {
         [CmdletBinding()]
         param(
             [Parameter(Mandatory = $true)]
@@ -54,7 +68,7 @@ begin {
         )
 
         foreach ($commandName in $Name) {
-            if (-not (Get-Command -Name $commandName -ErrorAction SilentlyContinue)) {
+            if (-not (Get-Command -Name $commandName -CommandType Application -ErrorAction SilentlyContinue)) {
                 throw "Required command '$commandName' was not found on PATH."
             }
         }
@@ -69,23 +83,25 @@ begin {
         param(
             [Parameter(Mandatory = $true)]
             [string]$FilePath,
+
             [Parameter(Mandatory = $true)]
             [string[]]$ArgumentList,
+
             [Parameter(Mandatory = $true)]
-            [string] $WorkingDirectory
+            [string]$WorkingDirectory
         )
 
         $workingDirectoryName = Split-Path -Path $WorkingDirectory -Leaf
         $arguments = $ArgumentList -join ' '
-
         Write-Host "[$workingDirectoryName] $FilePath $arguments"
 
         Push-Location -LiteralPath $WorkingDirectory
         try {
             & $FilePath @ArgumentList
+            $exitCode = $LASTEXITCODE
 
-            if ($LASTEXITCODE -ne 0) {
-                throw "'$FilePath $($ArgumentList -join ' ')' failed with exit code $LASTEXITCODE."
+            if ($exitCode -ne 0) {
+                throw "'$FilePath $($ArgumentList -join ' ')' failed with exit code $exitCode."
             }
         }
         finally {
@@ -95,7 +111,7 @@ begin {
 
     <#
     .SYNOPSIS
-    Internal: Runs a Git command and emits its output.
+    Internal: Runs a Git command and emits normalized output lines.
     #>
     function Invoke-GitOutput {
         [CmdletBinding()]
@@ -105,19 +121,15 @@ begin {
             [string[]]$ArgumentList
         )
 
-        Push-Location -LiteralPath $RepoRoot
-        try {
-            $output = & git @ArgumentList 2>&1
+        $output = @(& git -C $RepoRoot @ArgumentList 2>&1)
+        $exitCode = $LASTEXITCODE
 
-            if ($LASTEXITCODE -ne 0) {
-                throw "'git $($ArgumentList -join ' ')' failed: $output"
-            }
+        if ($exitCode -ne 0) {
+            $details = $output -join [Environment]::NewLine
+            throw "'git $($ArgumentList -join ' ')' failed with exit code $exitCode. $details"
+        }
 
-            $output
-        }
-        finally {
-            Pop-Location
-        }
+        $output | ForEach-Object { "$_" }
     }
 
     <#
@@ -143,88 +155,53 @@ begin {
 
     <#
     .SYNOPSIS
-    Internal: Verifies that the release tag does not exist locally or on origin.
+    Internal: Regenerates README.md, checks for drift, and restores its original bytes.
     #>
-    function Assert-TagAvailable {
+    function Assert-ReadmeCurrent {
         [CmdletBinding()]
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$TagName,
-            [switch]$CheckOrigin
-        )
+        param()
 
-        $matchingTags = @(Invoke-GitOutput -ArgumentList @('tag', '--list', $TagName))
-
-        if ($matchingTags.Count -gt 0) {
-            throw "Git tag '$TagName' already exists. Release tags cannot be reused."
+        if (-not (Test-Path -LiteralPath $ReadmePath -PathType Leaf)) {
+            throw "Expected generated README '$ReadmePath' was not found."
         }
 
-        if ($CheckOrigin) {
-            $remoteTags = @(
-                Invoke-GitOutput -ArgumentList @('ls-remote', '--tags', 'origin', "refs/tags/$TagName")
-            )
-
-            if ($remoteTags.Count -gt 0) {
-                throw "Git tag '$TagName' already exists on origin. Release tags cannot be reused."
-            }
-        }
-    }
-
-    <#
-    .SYNOPSIS
-    Internal: Force-moves a mutable major.minor rolling tag to a commit and optionally pushes it.
-
-    .DESCRIPTION
-    Unlike the immutable version tag, the rolling tag (for example v1.2) is expected to move to
-    the latest patch on each release, so it is force-created locally and force-pushed to origin.
-    #>
-    function Update-RollingTag {
-        [CmdletBinding(SupportsShouldProcess = $true)]
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$RollingTag,
-            [Parameter(Mandatory = $true)]
-            [string]$CommitSha,
-            [switch]$Push
-        )
-
-        if ($PSCmdlet.ShouldProcess($RollingTag, "Move rolling tag to $CommitSha")) {
-            $tagArguments = @(
-                'tag'
-                '--force'
-                '--annotate'
-                $RollingTag
-                $CommitSha
-                '--message'
-                "Release line $RollingTag"
-            )
-            Invoke-NativeCommand -FilePath 'git' -ArgumentList $tagArguments -WorkingDirectory $RepoRoot
-            Write-Host "Moved rolling tag $RollingTag to $CommitSha."
-        }
-
-        if ($Push -and $PSCmdlet.ShouldProcess('origin', "Force-push rolling tag $RollingTag")) {
-            Invoke-NativeCommand -FilePath 'git' `
-                -ArgumentList @('push', '--force', 'origin', "refs/tags/$RollingTag") `
+        # The .NET byte APIs preserve exact contents and remain available under PowerShell 5.1.
+        [byte[]]$readmeBytes = [System.IO.File]::ReadAllBytes($ReadmePath)
+        try {
+            Invoke-NativeCommand `
+                -FilePath 'atmos' `
+                -ArgumentList @('docs', 'generate', 'readme') `
                 -WorkingDirectory $RepoRoot
-            Write-Host "Force-pushed rolling tag $RollingTag to origin."
+            Invoke-NativeCommand `
+                -FilePath 'git' `
+                -ArgumentList @('diff', '--exit-code', '--', 'README.md') `
+                -WorkingDirectory $RepoRoot
+        }
+        finally {
+            [System.IO.File]::WriteAllBytes($ReadmePath, $readmeBytes)
         }
     }
 }
 
 process {
     $requiredCommands = @('git', 'terraform', 'go')
-
     if (-not $SkipReadme) {
         $requiredCommands += 'atmos'
     }
+    Assert-CommandAvailable -Name $requiredCommands
 
-    Assert-CommandExists -Name $requiredCommands
+    $gitRoot = @(Invoke-GitOutput -ArgumentList @('rev-parse', '--show-toplevel'))[0]
+    $resolvedGitRoot = (Resolve-Path -LiteralPath $gitRoot -ErrorAction Stop).Path
+    $resolvedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot -ErrorAction Stop).Path
 
-    $gitRoot = (Invoke-GitOutput -ArgumentList @('rev-parse', '--show-toplevel') | Select-Object -First 1)
-    $resolvedGitRoot = (Resolve-Path -LiteralPath $gitRoot).Path
-    $resolvedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
-
-    if ($resolvedGitRoot -ne $resolvedRepoRoot) {
+    # PowerShell string comparisons ignore case on every platform, unlike the underlying filesystems.
+    $pathComparison = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) {
+        [StringComparison]::OrdinalIgnoreCase
+    }
+    else {
+        [StringComparison]::Ordinal
+    }
+    if (-not [string]::Equals($resolvedGitRoot, $resolvedRepoRoot, $pathComparison)) {
         throw "Script root '$resolvedRepoRoot' does not match Git root '$resolvedGitRoot'."
     }
 
@@ -233,16 +210,23 @@ process {
     }
 
     if (-not $SkipReadme) {
-        Invoke-NativeCommand `
-            -FilePath 'atmos' `
-            -ArgumentList @('docs', 'generate', 'readme') `
-            -WorkingDirectory $RepoRoot
+        Assert-ReadmeCurrent
     }
 
-    Invoke-NativeCommand `
-        -FilePath 'terraform' `
-        -ArgumentList @('fmt', '-check', '-recursive') `
-        -WorkingDirectory $RepoRoot
+    if (-not $SkipTerraformFormat) {
+        foreach ($formatTarget in $TerraformFormatTargets) {
+            $formatArguments = @('fmt', '-check')
+            if ($formatTarget -cne '.') {
+                $formatArguments += @('-recursive', $formatTarget)
+            }
+
+            Invoke-NativeCommand `
+                -FilePath 'terraform' `
+                -ArgumentList $formatArguments `
+                -WorkingDirectory $RepoRoot
+        }
+    }
+
     Invoke-NativeCommand `
         -FilePath 'terraform' `
         -ArgumentList @('init', '-backend=false', '-input=false') `
@@ -257,8 +241,6 @@ process {
         '-count=1'
         '-timeout'
         '20m'
-        '-run'
-        '^(TestExamplesResourceAware|TestLabelOrderValidation)$'
         '.'
     )
     Invoke-NativeCommand `
@@ -266,43 +248,25 @@ process {
         -ArgumentList $goTestArguments `
         -WorkingDirectory $TestRoot
 
-    if (-not $Version) {
+    if ($Version) {
+        if (-not (Test-Path -LiteralPath $ReleaseTagScriptPath -PathType Leaf)) {
+            throw "Release tag helper '$ReleaseTagScriptPath' was not found."
+        }
+
+        Assert-CleanWorkingTree
+        $headSha = @(Invoke-GitOutput -ArgumentList @('rev-parse', 'HEAD'))[0]
+        $releaseTagParameters = @{
+            RepositoryPath = $RepoRoot
+            Version        = $Version
+            CommitSha      = $headSha
+            Push           = $Push
+        }
+
+        if ($PSCmdlet.ShouldProcess($Version, "Reconcile exact and moving release tags at $headSha")) {
+            & $ReleaseTagScriptPath @releaseTagParameters
+        }
+    }
+    else {
         Write-Host 'Checks completed.'
-        return
-    }
-
-    $tagName = $Version.StartsWith('v', [StringComparison]::OrdinalIgnoreCase) ? $Version : "v$Version"
-
-    Assert-CleanWorkingTree
-    Assert-TagAvailable -TagName $tagName -CheckOrigin:$Push
-
-    $headSha = (Invoke-GitOutput -ArgumentList @('rev-parse', 'HEAD') | Select-Object -First 1)
-    $shortHeadSha = (Invoke-GitOutput -ArgumentList @('rev-parse', '--short', 'HEAD') | Select-Object -First 1)
-    $createdTag = $false
-
-    if ($PSCmdlet.ShouldProcess($tagName, "Create annotated release tag at $shortHeadSha")) {
-        Invoke-NativeCommand -FilePath 'git' `
-            -ArgumentList @('tag', '--annotate', $tagName, $headSha, '--message', "Release $tagName") `
-            -WorkingDirectory $RepoRoot
-        $createdTag = $true
-        Write-Host "Created release tag $tagName at $shortHeadSha."
-    }
-
-    if ($Push -and $createdTag -and $PSCmdlet.ShouldProcess('origin', "Push release tag $tagName")) {
-        Invoke-NativeCommand `
-            -FilePath 'git' `
-            -ArgumentList @('push', 'origin', "refs/tags/$tagName") `
-            -WorkingDirectory $RepoRoot
-        Write-Host "Pushed release tag $tagName to origin."
-    }
-    elseif (-not $Push) {
-        Write-Host "Tag push skipped. Publish with: git push origin $tagName"
-    }
-
-    # Move the major.minor rolling tag to this release. Skip prerelease/build-metadata versions
-    # so a line like v1.2 only ever points at a clean patch release.
-    if ($tagName -match '^(v\d+)\.(\d+)\.\d+$') {
-        $rollingTag = "$($Matches[1]).$($Matches[2])"
-        Update-RollingTag -RollingTag $rollingTag -CommitSha $headSha -Push:$Push
     }
 }
