@@ -9,40 +9,40 @@
 # Modules should access the whole context as `module.this.context`
 # (a base64-encoded string) and pass it on with `context = module.this.context`.
 # Access individual final values as `module.this.<var>`, for example
-# `module.this.id` or `module.this.id_resource["aws_s3_bucket"]`.
+# `module.this.id` or `module.this.resource_name["aws_s3_bucket"]`.
 #
 # For example, when using defaults, `module.this.context` decodes to the
 # default context and `module.this.delimiter` will be `-` (hyphen).
 #
 
 module "this" {
-  # This fork is not published to the Terraform Registry. Pin to a release tag
-  # for stable consumers instead of `main`, for example ?ref=v1.0.0
-  source = "git::https://github.com/thisjustin816/terraform-null-label.git?ref=main"
+  # This fork is not published to the Terraform Registry. Use an immutable release tag.
+  source = "git::https://github.com/thisjustin816/terraform-null-label.git?ref=v2.0.0"
 
-  enabled              = var.enabled
-  namespace            = var.namespace
-  application          = var.application
-  region               = var.region
-  environment          = var.environment
-  delimiter            = var.delimiter
-  attributes           = var.attributes
-  tags                 = var.tags
-  additional_tag_map   = var.additional_tag_map
-  label_order          = var.label_order
-  regex_replace_chars  = var.regex_replace_chars
-  id_length_limit      = var.id_length_limit
-  label_key_case       = var.label_key_case
-  label_value_case     = var.label_value_case
-  descriptor_formats   = var.descriptor_formats
-  labels_as_tags       = var.labels_as_tags
-  resource_codes       = var.resource_codes
-  resource_label_rules = var.resource_label_rules
-  resource_hash_length = var.resource_hash_length
-  resource_hash_values = var.resource_hash_values
-  aws_resource_types   = var.aws_resource_types
-  region_codes         = var.region_codes
-  environment_codes    = var.environment_codes
+  enabled                 = var.enabled
+  namespace               = var.namespace
+  application             = var.application
+  region                  = var.region
+  environment             = var.environment
+  delimiter               = var.delimiter
+  attributes              = var.attributes
+  tags                    = var.tags
+  additional_tag_map      = var.additional_tag_map
+  label_order             = var.label_order
+  regex_replace_chars     = var.regex_replace_chars
+  id_length_limit         = var.id_length_limit
+  label_key_case          = var.label_key_case
+  label_value_case        = var.label_value_case
+  descriptor_formats      = var.descriptor_formats
+  labels_as_tags          = var.labels_as_tags
+  resource_codes          = var.resource_codes
+  resource_label_rules    = var.resource_label_rules
+  required_resource_names = var.required_resource_names
+  resource_hash_length    = var.resource_hash_length
+  resource_hash_values    = var.resource_hash_values
+  aws_resource_types      = var.aws_resource_types
+  region_codes            = var.region_codes
+  environment_codes       = var.environment_codes
 
   context = var.context
 }
@@ -52,13 +52,279 @@ module "this" {
 variable "context" {
   type        = string
   description = "A context to append to. Base64 encoded json is expected."
-  default     = "e30=" # base64encode(jsonencode({}))
+  default     = "e30=" # base64ecode(jsonencode({}))
 }
 
 variable "enabled" {
   type        = bool
   default     = null
   description = "Set to false to prevent the module from creating any resources"
+}
+
+variable "resource_codes" {
+  type        = map(string)
+  default     = null
+  description = "Resource type code overrides and additions used by logical resource labels."
+}
+
+variable "resource_label_rules" {
+  type = map(object({
+    code_position        = optional(string)
+    label_groups         = optional(list(list(string)))
+    component_delimiter  = optional(string)
+    group_delimiter      = optional(string)
+    regex_replace_chars  = optional(string)
+    label_value_case     = optional(string)
+    trim_chars           = optional(string)
+    collapse_regex       = optional(string)
+    collapse_replacement = optional(string)
+    required_prefix      = optional(string)
+    required_suffix      = optional(string)
+    min_length           = optional(number)
+    max_length           = optional(number)
+    validation_regex     = optional(string)
+    forbidden_regexes    = optional(list(string))
+    hash_policy          = optional(string)
+    hash_length          = optional(number)
+  }))
+  default     = null
+  description = <<-EOT
+    Partial physical-name rule overrides keyed by resource type. Null attributes inherit defaults. Empty strings,
+    empty lists, and zero are explicit values.
+    EOT
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules :
+      rule.code_position == null ? true : contains(["prefix", "suffix", "none"], rule.code_position)
+    ])
+    error_message = "Invalid code_position for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.code_position == null ? false : !contains(["prefix", "suffix", "none"], rule.code_position)
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules :
+      rule.label_value_case == null ? true : contains(["lower", "title", "upper", "none"], rule.label_value_case)
+    ])
+    error_message = "Invalid label_value_case for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.label_value_case == null ? false : !contains(["lower", "title", "upper", "none"], rule.label_value_case)
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules :
+      rule.hash_policy == null ? true : contains(["never", "when_needed", "always"], rule.hash_policy)
+    ])
+    error_message = "Invalid hash_policy for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.hash_policy == null ? false : !contains(["never", "when_needed", "always"], rule.hash_policy)
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules : rule.label_groups == null ? true : alltrue([
+        for group in rule.label_groups : length(setsubtract(
+          toset(group),
+          toset([
+            "namespace",
+            "application",
+            "region",
+            "region_code",
+            "environment",
+            "environment_code",
+            "attributes",
+          ])
+        )) == 0
+      ])
+    ])
+    error_message = "Unsupported label_groups elements for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.label_groups == null ? false : !alltrue([
+        for group in rule.label_groups : length(setsubtract(
+          toset(group),
+          toset([
+            "namespace",
+            "application",
+            "region",
+            "region_code",
+            "environment",
+            "environment_code",
+            "attributes",
+          ])
+        )) == 0
+      ])
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules :
+      rule.regex_replace_chars == null || rule.regex_replace_chars == "" ? true : (
+        can(regex("^/.*/$", rule.regex_replace_chars)) &&
+        can(replace("probe", rule.regex_replace_chars, ""))
+      )
+    ])
+    error_message = "Invalid regex_replace_chars for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.regex_replace_chars == null || rule.regex_replace_chars == "" ? false : !(
+        can(regex("^/.*/$", rule.regex_replace_chars)) &&
+        can(replace("probe", rule.regex_replace_chars, ""))
+      )
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules :
+      rule.collapse_regex == null || rule.collapse_regex == "" ? true : (
+        can(regex("^/.*/$", rule.collapse_regex)) &&
+        can(replace("probe", rule.collapse_regex, ""))
+      )
+    ])
+    error_message = "Invalid collapse_regex for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.collapse_regex == null || rule.collapse_regex == "" ? false : !(
+        can(regex("^/.*/$", rule.collapse_regex)) &&
+        can(replace("probe", rule.collapse_regex, ""))
+      )
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules :
+      rule.validation_regex == null ? true : (
+        can(regex("^\\^.*\\$$", rule.validation_regex)) &&
+        can(regexall(rule.validation_regex, ""))
+      )
+    ])
+    error_message = "Invalid validation_regex for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.validation_regex == null ? false : !(
+        can(regex("^\\^.*\\$$", rule.validation_regex)) &&
+        can(regexall(rule.validation_regex, ""))
+      )
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules : rule.forbidden_regexes == null ? true : alltrue([
+        for pattern in rule.forbidden_regexes : can(regexall(pattern, ""))
+      ])
+    ])
+    error_message = "Invalid forbidden_regexes for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.forbidden_regexes == null ? false : !alltrue([
+        for pattern in rule.forbidden_regexes : can(regexall(pattern, ""))
+      ])
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules :
+      rule.min_length == null ? true : rule.min_length >= 0 && floor(rule.min_length) == rule.min_length
+    ])
+    error_message = "Invalid min_length for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.min_length == null ? false : rule.min_length < 0 || floor(rule.min_length) != rule.min_length
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules :
+      rule.max_length == null ? true : rule.max_length >= 1 && floor(rule.max_length) == rule.max_length
+    ])
+    error_message = "Invalid max_length for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.max_length == null ? false : rule.max_length < 1 || floor(rule.max_length) != rule.max_length
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules :
+      rule.hash_length == null ? true : rule.hash_length >= 4 && rule.hash_length <= 32 && floor(rule.hash_length) == rule.hash_length
+    ])
+    error_message = "Invalid hash_length for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.hash_length == null ? false : rule.hash_length < 4 || rule.hash_length > 32 || floor(rule.hash_length) != rule.hash_length
+    ]))}."
+  }
+
+  validation {
+    condition = var.resource_label_rules == null ? true : alltrue([
+      for _, rule in var.resource_label_rules :
+      rule.min_length == null || rule.max_length == null ? true : rule.min_length <= rule.max_length
+    ])
+    error_message = "min_length exceeds max_length for resource_label_rules keys: ${join(", ", sort([
+      for key, rule in coalesce(var.resource_label_rules, {}) : key
+      if rule.min_length == null || rule.max_length == null ? false : rule.min_length > rule.max_length
+    ]))}."
+  }
+}
+
+variable "required_resource_names" {
+  type        = set(string)
+  default     = []
+  description = "Resource-name keys that must produce valid normal and hashed physical names."
+}
+
+variable "resource_hash_length" {
+  type        = number
+  default     = null
+  description = "Number of characters to use from the deterministic resource hash suffix."
+
+  validation {
+    condition = var.resource_hash_length == null ? true : (
+      var.resource_hash_length >= 4 &&
+      var.resource_hash_length <= 32 &&
+      floor(var.resource_hash_length) == var.resource_hash_length
+    )
+    error_message = "The resource_hash_length must be a whole number between 4 and 32 characters when supplied."
+  }
+}
+
+variable "resource_hash_values" {
+  type        = list(string)
+  default     = null
+  description = "Additional stable values included in the deterministic resource hash seed."
+}
+
+variable "aws_resource_types" {
+  type        = set(string)
+  default     = null
+  description = <<-EOT
+    Additional AWS Terraform resource type names to include in resource-code outputs.
+    Values can include or omit the aws_ prefix, for example aws_s3_bucket or s3_bucket.
+    EOT
+
+  validation {
+    condition = var.aws_resource_types == null ? true : !contains([
+      for resource_type in var.aws_resource_types : can(regex("^(aws_)?[a-z0-9_]+$", resource_type))
+    ], false)
+    error_message = "Each aws_resource_types value must be a Terraform-style AWS resource type such as aws_s3_bucket or s3_bucket."
+  }
+}
+
+variable "region_codes" {
+  type        = map(string)
+  default     = null
+  description = "Region-to-code map used by the `region_code` label element."
+}
+
+variable "environment_codes" {
+  type        = map(string)
+  default     = null
+  description = "Environment-to-code map used by the `environment_code` label element."
 }
 
 variable "namespace" {
@@ -83,7 +349,6 @@ variable "region" {
   default     = null
   description = "ID element. Used for cloud region, e.g. 'eastus', 'us-west-2', or 'northeurope'."
 }
-
 variable "environment" {
   type        = string
   default     = null
@@ -251,68 +516,6 @@ variable "descriptor_formats" {
     identical to how they appear in `id`.
     Default is `{}` (`descriptors` output will be empty).
     EOT
-}
-
-variable "resource_codes" {
-  type        = map(string)
-  default     = null
-  description = "Resource type code overrides and additions used by `id_resource` outputs."
-}
-
-variable "resource_label_rules" {
-  type        = any
-  default     = null
-  description = <<-EOT
-    Resource-specific naming rules keyed by resource type. Each rule can override the generated resource code,
-    code position (`prefix`, `suffix`, or `none`), delimiter, regular expression for invalid characters, length
-    limit, casing, hash length, whether to include region, required suffix, and whether the resource name should
-    include the deterministic global uniqueness hash.
-    EOT
-}
-
-variable "resource_hash_length" {
-  type        = number
-  default     = null
-  description = "Number of characters to use from the deterministic resource hash suffix."
-
-  validation {
-    condition     = var.resource_hash_length == null ? true : var.resource_hash_length >= 4 && var.resource_hash_length <= 32
-    error_message = "The resource_hash_length must be between 4 and 32 characters when supplied."
-  }
-}
-
-variable "resource_hash_values" {
-  type        = list(string)
-  default     = null
-  description = "Additional stable values included in the deterministic resource hash seed."
-}
-
-variable "aws_resource_types" {
-  type        = set(string)
-  default     = null
-  description = <<-EOT
-    Additional AWS Terraform resource type names to include in resource-code outputs.
-    Values can include or omit the aws_ prefix, for example aws_s3_bucket or s3_bucket.
-    EOT
-
-  validation {
-    condition = var.aws_resource_types == null ? true : !contains([
-      for resource_type in var.aws_resource_types : can(regex("^(aws_)?[a-z0-9_]+$", resource_type))
-    ], false)
-    error_message = "Each aws_resource_types value must be a Terraform-style AWS resource type such as aws_s3_bucket or s3_bucket."
-  }
-}
-
-variable "region_codes" {
-  type        = map(string)
-  default     = null
-  description = "Region-to-code map used by the `region_code` label element."
-}
-
-variable "environment_codes" {
-  type        = map(string)
-  default     = null
-  description = "Environment-to-code map used by the `environment_code` label element."
 }
 
 #### End of copy of this fork's variables.tf

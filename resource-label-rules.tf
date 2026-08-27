@@ -1,125 +1,89 @@
 locals {
-  default_resource_label_rules = merge(local.default_azure_resource_label_rules, local.default_aws_resource_label_rules)
+  normalized_resource_codes = merge(
+    local.requested_aws_resource_codes,
+    local.default_resource_codes,
+    local.resource_code_overrides,
+  )
 
-  lower_alnum_rule = {
-    delimiter           = ""
-    regex_replace_chars = "/[^a-z0-9]/"
-    label_value_case    = "lower"
-    trim_chars          = ""
+  resource_providers = {
+    for resource_type in setunion(
+      toset(keys(local.normalized_resource_codes)),
+      toset(keys(local.default_resource_label_rules)),
+      toset(keys(local.resource_rule_overrides)),
+    ) :
+    resource_type => (
+      startswith(resource_type, "aws_") ? "aws" :
+      startswith(resource_type, "azure_") ? "azure" : "other"
+    )
   }
 
-  lower_alnum_hyphen_rule = {
-    delimiter            = "-"
-    regex_replace_chars  = "/[^a-z0-9-]/"
-    label_value_case     = "lower"
-    trim_chars           = "-"
-    collapse_regex       = "/-{2,}/"
-    collapse_replacement = "-"
+  id_with_resource_code = {
+    for resource_type, code in local.normalized_resource_codes :
+    resource_type => join(local.delimiter, compact(
+      local.resource_providers[resource_type] == "aws" ? [local.id_without_region, code] : [code, local.id]
+    ))
   }
 
-  alnum_hyphen_rule = {
-    delimiter            = "-"
-    regex_replace_chars  = "/[^A-Za-z0-9-]/"
-    trim_chars           = "-"
-    collapse_regex       = "/-{2,}/"
-    collapse_replacement = "-"
+  resource_rule_overrides = {
+    for resource_type, rule in local.input.resource_label_rules :
+    resource_type => {
+      for attribute, value in rule : attribute => value if value != null
+    }
   }
 
-  alnum_hyphen_underscore_rule = {
-    delimiter           = "-"
-    regex_replace_chars = "/[^A-Za-z0-9_-]/"
-    trim_chars          = "-"
+  default_resource_label_rules = merge(
+    local.aws_resource_label_rules,
+    local.azure_resource_label_rules,
+  )
+
+  effective_resource_label_rule_keys = setunion(
+    toset(keys(local.default_resource_label_rules)),
+    toset(keys(local.resource_rule_overrides)),
+  )
+
+  resource_label_rule_defaults = {
+    for resource_type in local.effective_resource_label_rule_keys :
+    resource_type => {
+      code_position        = local.resource_providers[resource_type] == "aws" ? "suffix" : "prefix"
+      label_groups         = [local.label_order]
+      component_delimiter  = local.delimiter
+      group_delimiter      = local.delimiter
+      regex_replace_chars  = local.regex_replace_chars
+      label_value_case     = local.label_value_case
+      trim_chars           = ""
+      collapse_regex       = ""
+      collapse_replacement = ""
+      required_prefix      = ""
+      required_suffix      = ""
+      min_length           = null
+      max_length           = null
+      validation_regex     = null
+      forbidden_regexes    = []
+      hash_policy          = "never"
+      hash_length          = null
+    }
   }
 
-  azure_global_lower_alnum_rule = merge(local.lower_alnum_rule, {
-    globally_unique = true
-  })
-
-  azure_global_lower_alnum_hyphen_rule = merge(local.lower_alnum_hyphen_rule, {
-    globally_unique = true
-  })
-
-  azure_global_alnum_hyphen_rule = merge(local.alnum_hyphen_rule, {
-    globally_unique = true
-  })
-
-  default_azure_resource_label_rules = {
-    ai_search                  = merge(local.alnum_hyphen_rule, { id_length_limit = 60 })
-    analysis_services_server   = merge(local.azure_global_lower_alnum_rule, { id_length_limit = 63 })
-    api_management             = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 50 })
-    api_management_service     = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 50 })
-    app_configuration          = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 50 })
-    app_service_environment    = merge(local.alnum_hyphen_rule, { id_length_limit = 36 })
-    app_service_plan           = merge(local.alnum_hyphen_rule, { id_length_limit = 40 })
-    automation_account         = merge(local.alnum_hyphen_rule, { id_length_limit = 50 })
-    azure_managed_redis        = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 63 })
-    batch_account              = merge(local.lower_alnum_rule, { id_length_limit = 24 })
-    communication_services     = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 63 })
-    container_app              = merge(local.lower_alnum_hyphen_rule, { id_length_limit = 32 })
-    container_group            = merge(local.lower_alnum_hyphen_rule, { id_length_limit = 63 })
-    container_instance         = merge(local.lower_alnum_hyphen_rule, { id_length_limit = 63 })
-    container_registry         = merge(local.azure_global_lower_alnum_rule, { id_length_limit = 50 })
-    cosmosdb_account           = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 44 })
-    cosmosdb_cassandra_account = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 44 })
-    cosmosdb_gremlin_account   = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 44 })
-    cosmosdb_mongodb_account   = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 44 })
-    cosmosdb_nosql_account     = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 44 })
-    cosmosdb_table_account     = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 44 })
-    data_factory               = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 63 })
-    eventhub_namespace         = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 50 })
-    function_app               = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 60 })
-    key_vault                  = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 24 })
-    key_vault_managed_hsm      = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 24 })
-    kusto_cluster              = merge(local.azure_global_lower_alnum_rule, { id_length_limit = 22 })
-    log_analytics_workspace    = merge(local.alnum_hyphen_rule, { id_length_limit = 63 })
-    managed_grafana            = merge(local.alnum_hyphen_rule, { id_length_limit = 23 })
-    managed_identity           = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 128 })
-    mysql_server               = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 63 })
-    postgres_server            = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 63 })
-    redis_cache                = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 63 })
-    servicebus_namespace       = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 50 })
-    signalr_service            = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 63 })
-    sql_managed_instance       = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 63 })
-    sql_server                 = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 63 })
-    static_site                = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 40 })
-    storage_account            = merge(local.azure_global_lower_alnum_rule, { id_length_limit = 24 })
-    storage_account_vm         = merge(local.azure_global_lower_alnum_rule, { id_length_limit = 24 })
-    synapse_workspace          = merge(local.azure_global_lower_alnum_hyphen_rule, { id_length_limit = 50 })
-    traffic_manager_profile    = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 63 })
-    user_assigned_identity     = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 128 })
-    virtual_machine            = merge(local.lower_alnum_hyphen_rule, { id_length_limit = 64 })
-    virtual_machine_scale_set  = merge(local.lower_alnum_hyphen_rule, { id_length_limit = 64 })
-    web_app                    = merge(local.azure_global_alnum_hyphen_rule, { id_length_limit = 60 })
+  resource_label_rules_before_resolved_values = {
+    for resource_type in local.effective_resource_label_rule_keys :
+    resource_type => merge(
+      local.resource_label_rule_defaults[resource_type],
+      try(local.default_resource_label_rules[resource_type], {}),
+      try(local.resource_rule_overrides[resource_type], {}),
+    )
   }
 
-  default_aws_resource_label_rules = {
-    aws_cloudwatch_log_group = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 512, regex_replace_chars = "/[^A-Za-z0-9_\\.\\/#-]/" })
-    aws_db_instance          = merge(local.lower_alnum_hyphen_rule, { code_position = "prefix", id_length_limit = 63 })
-    aws_db_parameter_group   = merge(local.lower_alnum_hyphen_rule, { code_position = "prefix", id_length_limit = 255 })
-    aws_db_subnet_group      = merge(local.lower_alnum_hyphen_rule, { code_position = "prefix", id_length_limit = 255 })
-    aws_dynamodb_table       = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 255, regex_replace_chars = "/[^A-Za-z0-9_.-]/" })
-    aws_ecr_repository       = merge(local.lower_alnum_hyphen_rule, { code_position = "prefix", id_length_limit = 256, regex_replace_chars = "/[^a-z0-9._\\/-]/" })
-    aws_elb                  = merge(local.lower_alnum_hyphen_rule, { code_position = "prefix", id_length_limit = 32 })
-    aws_iam_instance_profile = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 128, regex_replace_chars = "/[^A-Za-z0-9+=,.@_-]/" })
-    aws_iam_policy           = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 128, regex_replace_chars = "/[^A-Za-z0-9+=,.@_-]/" })
-    aws_iam_role             = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 64, regex_replace_chars = "/[^A-Za-z0-9+=,.@_-]/" })
-    aws_iam_user             = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 64, regex_replace_chars = "/[^A-Za-z0-9+=,.@_-]/" })
-    aws_lambda_function      = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 64 })
-    aws_lb                   = merge(local.lower_alnum_hyphen_rule, { code_position = "prefix", id_length_limit = 32 })
-    aws_lb_target_group      = merge(local.lower_alnum_hyphen_rule, { id_length_limit = 32 })
-    aws_rds_cluster          = merge(local.lower_alnum_hyphen_rule, { code_position = "prefix", id_length_limit = 52 })
-    aws_rds_cluster_parameter_group = merge(local.lower_alnum_hyphen_rule, {
-      code_position   = "prefix"
-      id_length_limit = 255
-    })
-    aws_s3_bucket = merge(local.lower_alnum_hyphen_rule, {
-      code_position   = "prefix"
-      globally_unique = true
-      id_length_limit = 63
-    })
-    aws_sns_topic      = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 256 })
-    aws_sns_fifo_topic = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 256, regex_replace_chars = "/[^A-Za-z0-9_.-]/", required_suffix = ".fifo" })
-    aws_sqs_queue      = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 80 })
-    aws_sqs_fifo_queue = merge(local.alnum_hyphen_underscore_rule, { id_length_limit = 80, regex_replace_chars = "/[^A-Za-z0-9_.-]/", required_suffix = ".fifo" })
+  effective_resource_label_rules = {
+    for resource_type, rule in local.resource_label_rules_before_resolved_values :
+    resource_type => merge(
+      rule,
+      {
+        code = try(local.normalized_resource_codes[resource_type], "")
+        hash_length = (
+          try(rule.hash_length, null) == null ? local.resource_hash_length : rule.hash_length
+        )
+      },
+    )
   }
+
 }

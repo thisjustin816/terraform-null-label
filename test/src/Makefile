@@ -13,7 +13,7 @@ init:
 ## Run tests
 test: init
 	go mod download
-	go test -v -timeout 20m -run '^(TestExamplesResourceAware|TestLabelOrderValidation)$$' .
+	go test -v -timeout 20m .
 
 .PHONY : clean
 ## Clean up files

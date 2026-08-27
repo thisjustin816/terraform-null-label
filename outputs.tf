@@ -3,34 +3,74 @@ output "id" {
   description = "Disambiguated ID string restricted to `id_length_limit` characters in total"
 }
 
-output "id_resource" {
-  value       = local.enabled ? local.id_with_resource_codes : {}
-  description = "Resource-specific ID strings with resource codes, naming restrictions, length limits, and required global hash suffixes applied."
+output "resource_codes" {
+  value       = local.enabled ? local.normalized_resource_codes : {}
+  description = "Normalized resource abbreviations keyed by provider-qualified resource type."
 }
 
-output "id_resource_unique" {
-  value       = local.enabled ? local.resource_label_unique_ids : {}
-  description = "Resource-specific ID strings with deterministic hash suffixes applied, including for resources that do not require global uniqueness."
+output "id_with_resource_code" {
+  value       = local.enabled ? local.id_with_resource_code : {}
+  description = "Logical code-bearing labels. These values do not claim provider naming validity."
+}
+
+output "resource_name" {
+  value       = local.enabled ? local.resource_name : {}
+  description = "Provider-valid physical names produced by complete resource rules."
+
+  precondition {
+    condition = !local.enabled || (
+      length(local.caller_renderer_completeness_errors) == 0 &&
+      length(local.required_resource_name_errors) == 0
+    )
+    error_message = join(" ", compact([
+      length(local.caller_renderer_completeness_errors) == 0 ? "" : "Incomplete renderable resource_label_rules: ${join("; ", [for resource_type in sort(keys(local.caller_renderer_completeness_errors)) : "${resource_type}: ${join(", ", local.caller_renderer_completeness_errors[resource_type])}"])}.",
+      length(local.required_resource_name_errors) == 0 ? "" : "Required resource names failed: ${join("; ", [for resource_type in sort(keys(local.required_resource_name_errors)) : "${resource_type}: ${join(", ", local.required_resource_name_errors[resource_type])}"])}.",
+    ]))
+  }
+}
+
+output "resource_name_hashed" {
+  value       = local.enabled ? local.resource_name_hashed : {}
+  description = "Provider-valid physical names with deterministic hashes applied."
+
+  precondition {
+    condition = !local.enabled || (
+      length(local.caller_renderer_completeness_errors) == 0 &&
+      length(local.required_resource_name_errors) == 0
+    )
+    error_message = join(" ", compact([
+      length(local.caller_renderer_completeness_errors) == 0 ? "" : "Incomplete renderable resource_label_rules: ${join("; ", [for resource_type in sort(keys(local.caller_renderer_completeness_errors)) : "${resource_type}: ${join(", ", local.caller_renderer_completeness_errors[resource_type])}"])}.",
+      length(local.required_resource_name_errors) == 0 ? "" : "Required resource names failed: ${join("; ", [for resource_type in sort(keys(local.required_resource_name_errors)) : "${resource_type}: ${join(", ", local.required_resource_name_errors[resource_type])}"])}.",
+    ]))
+  }
+}
+
+output "resource_name_errors" {
+  value       = local.enabled ? local.resource_name_errors : {}
+  description = "Physical-name validation errors keyed by resource type."
 }
 
 output "resource_hash" {
   value       = local.enabled ? local.resource_hash : ""
-  description = "Deterministic hash base used by resource labels that need a global uniqueness suffix."
+  description = "Deterministic hash seed used to provide collision-resistant resource-name suffixes."
 }
 
 output "resource_label_rules" {
-  value       = local.enabled ? local.normalized_resource_label_rules : {}
-  description = "Normalized resource naming rules used to produce the resource-specific IDs."
+  value = {
+    for resource_type, rule in local.effective_resource_label_rules :
+    resource_type => rule if local.enabled
+  }
+  description = "Effective normalized v2 resource rules keyed by resource type."
 }
 
 output "id_for_keyvault" {
-  value       = local.enabled ? local.id_for_keyvault : ""
-  description = "Disambiguated ID string generating unique name for Azure Key Vault."
+  value       = local.enabled ? try(local.resource_name_hashed["azure_key_vault"], "") : ""
+  description = "Deprecated alias for `resource_name_hashed.azure_key_vault`."
 }
 
 output "id_for_storage_account" {
-  value       = local.enabled ? local.id_for_storage_account : ""
-  description = "Disambiguated ID string generating unique name for Azure Storage Accounts"
+  value       = local.enabled ? try(local.resource_name_hashed["azure_storage_account"], "") : ""
+  description = "Deprecated alias for `resource_name_hashed.azure_storage_account`."
 }
 
 output "id_full" {

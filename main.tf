@@ -24,8 +24,6 @@ locals {
   replacement    = local.defaults.replacement
   id_hash_length = local.defaults.id_hash_length
 
-  input_context = merge(local.defaults, jsondecode(base64decode(var.context)))
-
   # The values provided by variables supersede the values inherited from the context object,
   # except for tags and attributes which are merged.
   input = {
@@ -43,8 +41,7 @@ locals {
 
     additional_tag_map   = merge(local.input_context.additional_tag_map, var.additional_tag_map)
     label_order          = var.label_order == null ? local.input_context.label_order : var.label_order
-    resource_codes       = merge(local.input_context.resource_codes, coalesce(var.resource_codes, {}))
-    resource_label_rules = var.resource_label_rules == null ? local.input_context.resource_label_rules : merge(local.input_context.resource_label_rules, var.resource_label_rules)
+    resource_label_rules = local.merged_resource_rules
     resource_hash_length = var.resource_hash_length == null ? local.input_context.resource_hash_length : var.resource_hash_length
     resource_hash_values = var.resource_hash_values == null ? local.input_context.resource_hash_values : var.resource_hash_values
     aws_resource_types   = var.aws_resource_types == null ? local.input_context.aws_resource_types : var.aws_resource_types
@@ -88,12 +85,9 @@ locals {
   environment_code = try(local.environment_codes[local.environment], "")
   application      = local.normalized_labels["application"]
 
-  delimiter   = local.input.delimiter == null ? local.defaults.delimiter : local.input.delimiter
-  label_order = local.input.label_order == null ? local.defaults.label_order : coalescelist(local.input.label_order, local.defaults.label_order)
-  # Auto-generated codes from `aws_resource_types` are the lowest precedence, so the curated
-  # catalog and any explicit `resource_codes` overrides win for resources that appear in both.
-  resource_codes       = merge(local.requested_aws_resource_codes, local.input.resource_codes)
-  resource_label_rules = local.input.resource_label_rules == null ? local.defaults.resource_label_rules : local.input.resource_label_rules
+  delimiter            = local.input.delimiter == null ? local.defaults.delimiter : local.input.delimiter
+  label_order          = local.input.label_order == null ? local.defaults.label_order : coalescelist(local.input.label_order, local.defaults.label_order)
+  resource_label_rules = local.input.resource_label_rules
   resource_hash_length = local.input.resource_hash_length == null ? local.defaults.resource_hash_length : local.input.resource_hash_length
   resource_hash_values = local.input.resource_hash_values == null ? local.defaults.resource_hash_values : local.input.resource_hash_values
   aws_resource_types   = local.input.aws_resource_types == null ? local.defaults.aws_resource_types : local.input.aws_resource_types
@@ -182,42 +176,5 @@ locals {
   id_without_region_hash                   = replace(local.id_without_region_hash_case, local.regex_replace_chars, local.replacement)
   id_without_region_short                  = substr("${local.id_without_region_truncated}${local.id_without_region_hash}", 0, local.id_length_limit)
   id_without_region                        = local.id_length_limit != 0 && length(local.id_without_region_full) > local.id_length_limit ? local.id_without_region_short : local.id_without_region_full
-
-  id_with_resource_codes = local.resource_label_ids
-  id_for_storage_account = try(local.resource_label_unique_ids["storage_account"], "")
-  id_for_keyvault        = try(local.resource_label_unique_ids["key_vault"], "")
-
-
-  # Context of this label to pass to other label modules
-  output_context = {
-    enabled            = local.enabled
-    namespace          = local.namespace
-    region             = local.region
-    region_code        = local.region_code
-    environment        = local.environment
-    environment_code   = local.environment_code
-    application        = local.application
-    delimiter          = local.delimiter
-    attributes         = local.attributes
-    tags               = local.tags
-    additional_tag_map = local.additional_tag_map
-    label_order        = local.label_order
-    region_codes       = local.region_codes
-    resource_codes     = local.resource_codes
-    # Chain the raw user rules, not the normalized ones. Serializing normalized rules
-    # bakes in resolved codes, which would override a downstream module's own
-    # `resource_codes` for the same resource type when context is chained.
-    resource_label_rules = local.resource_label_rules
-    resource_hash_length = local.resource_hash_length
-    resource_hash_values = local.resource_hash_values
-    aws_resource_types   = local.aws_resource_types
-    environment_codes    = local.environment_codes
-    regex_replace_chars  = local.regex_replace_chars
-    id_length_limit      = local.id_length_limit
-    label_key_case       = local.label_key_case
-    label_value_case     = local.label_value_case
-    labels_as_tags       = local.labels_as_tags
-    descriptor_formats   = local.descriptor_formats
-  }
 
 }

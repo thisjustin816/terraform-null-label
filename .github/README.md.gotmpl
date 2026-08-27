@@ -227,7 +227,7 @@ In general, PRs are welcome. We follow the typical "fork-and-pull" Git workflow.
 
 ## Running Terraform Tests
 
-Focused tests live in [`test/src`](test/src) and use Terratest against `examples/resource-aware`.
+The complete test suite lives in [`test/src`](test/src).
 
 Install:
 - Terraform
@@ -238,7 +238,7 @@ To run tests:
 
 ```sh
 cd test/src
-go test -timeout 20m -run '^TestExamplesResourceAware$' .
+go test -count=1 -timeout 20m .
 ```
 
 To regenerate this README:

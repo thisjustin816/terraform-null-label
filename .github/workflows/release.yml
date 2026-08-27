@@ -14,8 +14,8 @@ on:
 # Advance these values intentionally to start a new release line. Each
 # successful CI run on main publishes the next patch in the configured line.
 env:
-  RELEASE_MAJOR: 1
-  RELEASE_MINOR: 2
+  RELEASE_MAJOR: 2
+  RELEASE_MINOR: 0
 
 permissions:
   contents: write
@@ -34,7 +34,7 @@ jobs:
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Check out the validated commit
@@ -71,7 +71,6 @@ jobs:
 
           if [[ -n "$current_version" ]]; then
             echo "version=$current_version" >> "$GITHUB_OUTPUT"
-            echo "tag_required=false" >> "$GITHUB_OUTPUT"
 
             if gh release view "$current_version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "release_required=false" >> "$GITHUB_OUTPUT"
@@ -96,31 +95,32 @@ jobs:
 
           version="v${RELEASE_MAJOR}.${RELEASE_MINOR}.$((latest_patch + 1))"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag_required=true" >> "$GITHUB_OUTPUT"
           echo "release_required=true" >> "$GITHUB_OUTPUT"
           echo "Next release: $version"
 
       - name: Set up Terraform
-        if: steps.release.outputs.tag_required == 'true'
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.15.8
 
       - name: Set up Go
-        if: steps.release.outputs.tag_required == 'true'
         uses: actions/setup-go@v6
         with:
           go-version-file: test/src/go.mod
           cache-dependency-path: test/src/go.sum
 
+      - name: Set up Atmos
+        uses: cloudposse/github-action-setup-atmos@v3.5.0
+        with:
+          atmos-version: 1.216.0
+
       - name: Validate module and publish tag
-        if: steps.release.outputs.tag_required == 'true'
         env:
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
           VERSION: ${{ steps.release.outputs.version }}
         shell: pwsh
-        run: ./scripts/Publish-TerraformModule.ps1 -SkipReadme -Version $env:VERSION -Push
+        run: ./scripts/Publish-TerraformModule.ps1 -Version $env:VERSION -Push
 
       - name: Create GitHub Release
         if: steps.release.outputs.release_required == 'true'

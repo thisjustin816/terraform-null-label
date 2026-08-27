@@ -1,0 +1,94 @@
+{
+  "codes": {
+    "aws_ecr_repository": "ecr",
+    "aws_elasticache_replication_group": "cacherg",
+    "aws_lambda_function": "fn",
+    "azure_postgresql_flexible_server": "pgsql",
+    "azure_storage_account": "st",
+    "custom_compact": "S!V@C",
+    "custom_path": "",
+    "custom_tag_only": "tag"
+  },
+  "logical": {
+    "aws_ecr_repository": "platform-Orders-api-ecr",
+    "aws_lambda_function": "platform-Orders-api-fn",
+    "azure_storage_account": "st-platform-Orders-api",
+    "custom_path": "platform-Orders-api",
+    "custom_tag_only": "tag-platform-Orders-api"
+  },
+  "normal": {
+    "aws_ecr_repository": "platform/orders-api",
+    "aws_elasticache_replication_group": "cacherg-platform-orders-api",
+    "aws_kms_alias": "alias/Platform-Orders-API-kmsalias",
+    "aws_lambda_function": "Platform-Orders-API-fn",
+    "aws_s3_bucket": "s3-platform-orders-api-745beb9e",
+    "aws_sqs_fifo_queue": "Platform-Orders-API-sqs.fifo",
+    "azure_ai_search": "srch-platform-orders-api-745beb9e",
+    "azure_analysis_services_server": "asplatformordersapi",
+    "azure_app_service_plan": "asp-Platform-Orders-API",
+    "azure_gallery": "gal_Platform_Orders_API",
+    "azure_key_vault": "kv-platform-orders-api",
+    "azure_postgresql_flexible_server": "pgsql-platform-orders-api-745beb9e",
+    "azure_storage_account": "stplatformordersapi",
+    "custom_compact": "svcplatformordersapi",
+    "custom_path": "platform/orders-api"
+  },
+  "hashed": {
+    "aws_ecr_repository": "platform/orders-api-745beb9e",
+    "aws_elasticache_replication_group": "cacherg-platform-orders-api-745beb9e",
+    "aws_kms_alias": "alias/Platform-Orders-API-kmsalias-745beb9e",
+    "aws_lambda_function": "Platform-Orders-API-fn-745beb9e",
+    "aws_s3_bucket": "s3-platform-orders-api-745beb9e",
+    "aws_sqs_fifo_queue": "Platform-Orders-API-sqs-745beb9e.fifo",
+    "azure_ai_search": "srch-platform-orders-api-745beb9e",
+    "azure_analysis_services_server": "asplatformordersapi745beb9e",
+    "azure_app_service_plan": "asp-Platform-Orders-API-745beb9e",
+    "azure_gallery": "gal_Platform_Orders_API_745beb9e",
+    "azure_key_vault": "kv-platform-ord-745beb9e",
+    "azure_postgresql_flexible_server": "pgsql-platform-orders-api-745beb9e",
+    "azure_storage_account": "stplatformorders745beb9e",
+    "custom_compact": "svcplatformordersapi745beb9e",
+    "custom_path": "platform/orders-api-745beb9e"
+  },
+  "errors": {
+    "custom_invalid": [
+      "normal candidate fails final regex",
+      "hashed candidate fails final regex"
+    ]
+  },
+  "rules": {
+    "aws_lambda_function": {
+      "code": "fn",
+      "code_position": "suffix",
+      "hash_policy": "when_needed"
+    },
+    "custom_compact": {
+      "code": "S!V@C",
+      "code_position": "prefix",
+      "hash_policy": "never"
+    },
+    "custom_path": {
+      "code": "",
+      "code_position": "none",
+      "hash_policy": "never"
+    }
+  },
+  "absent_from_physical_names": [
+    "aws_api_gateway_domain_name",
+    "aws_vpc",
+    "azure_blueprint_definition",
+    "azure_enclave",
+    "azure_managed_redis",
+    "azure_private_dns_zone",
+    "custom_invalid",
+    "custom_tag_only"
+  ],
+  "aliases": {
+    "key_vault": "kv-platform-ord-745beb9e",
+    "storage_account": "stplatformorders745beb9e"
+  },
+  "legacy_aliases": {
+    "key_vault": "kv-platform-ord-eec9d15d",
+    "storage_account": "stplatformorderseec9d15d"
+  }
+}

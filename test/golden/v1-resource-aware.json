@@ -1,0 +1,14 @@
+{
+  "aws_cloudwatch_log_group": "eg-orders-usw2-p-api-log",
+  "aws_dynamic_resource": "eg-orders-p-api-bedrockagenta",
+  "aws_lambda_function": "eg-orders-p-api-lambda",
+  "aws_lambda_function_unique": "eg-orders-p-api-lambda-3b525d61",
+  "aws_s3_bucket": "s3-eg-orders-p-api-3b525d61",
+  "aws_sqs_fifo_queue": "eg-orders-p-api-sqs.fifo",
+  "azure_key_vault": "kv-eg-orders-us-3b525d61",
+  "azure_storage_account": "stegordersusw2pa3b525d61",
+  "base_id": "eg-orders-usw2-p-api",
+  "key_vault_alias": "kv-eg-orders-us-3b525d61",
+  "resource_hash": "3b525d61",
+  "storage_account_alias": "stegordersusw2pa3b525d61"
+}

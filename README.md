@@ -26,19 +26,18 @@
 
 -->
 
-Terraform module for consistent labels, tags, and provider-aware resource names.
+Terraform module for logical labels, tags, resource codes, and validated AWS and Azure physical names.
 
-This repository is a fork of Cloud Posse `terraform-null-label` with Azure and AWS resource naming support. The base `id` output remains a reusable logical label. Resource-aware outputs add provider resource codes, service-specific naming restrictions, length limits, and deterministic hash suffixes for resources that require global uniqueness.
+This repository is a fork of Cloud Posse `terraform-null-label`. The base `id` and tag contract stays compatible with v1. Version 2 separates logical resource-code labels from physical names that have complete provider rules.
 
 Major features:
 - Base labels from `namespace`, `application`, `region`, `environment`, and `attributes`.
-- Azure resource abbreviations based on Microsoft Cloud Adoption Framework guidance.
-- AWS resource codes for common named resources.
-- Generated AWS resource code support through `aws_resource_types`.
-- Azure and AWS region code maps.
-- Resource-specific character cleanup, case handling, delimiter handling, length limits, required suffixes, and hash suffixes.
-- AWS resource labels omit region by default. Azure resource labels include region by default.
-- Context chaining through the serialized `context` output.
+- Provider-qualified AWS and Azure resource-code maps.
+- Logical resource-code labels for every built-in, generated, or caller-defined code.
+- Validated physical-name outputs for keys with complete built-in or caller-supplied rules.
+- Structured name groups, protected affixes, deterministic hashes, and opt-in required-name checks.
+- Generated AWS resource codes and caller-defined codes that remain code-only until a complete physical-name contract is supplied.
+- Versioned context chaining with raw label values and typed resource rules.
 
 
 
@@ -47,125 +46,149 @@ Major features:
 
 ## Usage
 
-### Basic Usage
+### Upgrade notice
+
+Version 2 is a breaking release. Read the [v2 migration guide](docs/migration-v2.md) before changing an existing module source. The supported Terraform range is `>= 1.3.2, < 2.0.0`.
+
+### Basic usage
+
+Pin the module to the immutable release tag:
 
 ```hcl
 module "label" {
-  source = "./modules/terraform-null-label"
+  source = "git::https://github.com/thisjustin816/terraform-null-label.git?ref=v2.0.0"
 
-  namespace   = "eg"
-  application = "orders"
-  region    = "us-west-2"
-  environment = "prod"
-  attributes  = ["api"]
+  namespace            = "platform"
+  application          = "orders"
+  environment          = "production"
+  attributes           = ["api"]
+  resource_hash_values = ["account-123"]
 }
 ```
 
-The base output keeps the normal label order:
+The base `id` output and generated tags use the existing null-label contract.
 
-```text
-module.label.id = "eg-orders-usw2-p-api"
-```
+### Naming layers
 
-Use `id_resource` when a provider resource has a known naming convention:
+Version 2 exposes three separate naming layers:
+
+- `id` and the tag outputs preserve the base-label contract.
+- `resource_codes` contains built-in, generated AWS, and caller-defined abbreviations.
+- `id_with_resource_code` contains logical labels for every resource code. These labels do not claim provider validity.
+- `resource_name` and `resource_name_hashed` contain physical names only when both forms satisfy a complete rule.
+
+### Physical names and required keys
+
+List every physical name that a stack consumes:
 
 ```hcl
-resource "aws_lambda_function" "api" {
-  function_name = module.label.id_resource.aws_lambda_function
+module "label" {
+  source = "git::https://github.com/thisjustin816/terraform-null-label.git?ref=v2.0.0"
+
+  namespace   = "platform"
+  application = "orders"
+  attributes  = ["api"]
+
+  required_resource_names = [
+    "aws_ecr_repository",
+    "azure_storage_account",
+  ]
 }
 
-resource "aws_s3_bucket" "api" {
-  bucket = module.label.id_resource.aws_s3_bucket
-}
-
-resource "azurerm_storage_account" "api" {
-  name = module.label.id_resource.storage_account
+resource "aws_ecr_repository" "service" {
+  name = module.label.resource_name["aws_ecr_repository"]
 }
 ```
 
-### Resource-Aware Outputs
+Invalid physical names are omitted from both physical-name maps and reported in `resource_name_errors`. An unknown, unsupported, or invalid key in `required_resource_names` blocks planning with a key-specific error. Setting `enabled = false` bypasses these preconditions and returns the module's empty-output convention.
 
-`id_resource` is a map keyed by resource type. Each value starts from the base label, applies the resource code, then applies the resource's default naming rule.
+### Resource rules
 
-Examples from `examples/resource-aware`:
-
-```text
-base_id                    = "eg-orders-usw2-p-api"
-resource_hash              = "3b525d61"
-aws_cloudwatch_log_group   = "eg-orders-usw2-p-api-log"
-aws_lambda_function        = "eg-orders-p-api-lambda"
-aws_lambda_function_unique = "eg-orders-p-api-lambda-3b525d61"
-aws_s3_bucket              = "s3-eg-orders-p-api-3b525d61"
-aws_sqs_fifo_queue         = "eg-orders-p-api-sqs.fifo"
-azure_key_vault            = "kv-eg-orders-us-<hash>"
-azure_storage_account      = "stegordersusw2pa<hash>"
-```
-
-AWS resource labels omit region by default because most AWS resources are already scoped by account and Region. Opt in per resource when a global or cross-region AWS name should include region:
+`resource_label_rules` is a typed map of partial overrides. Null attributes inherit the built-in rule for that key. Empty strings, empty lists, and zero are explicit overrides.
 
 ```hcl
 resource_label_rules = {
-  aws_cloudwatch_log_group = {
-    include_region = true
+  aws_ecr_repository = {
+    hash_policy = "always"
   }
 }
 ```
 
-### Globally Unique Names
+Set abbreviations through `resource_codes`, not through a rule. A code alone does not create a physical-name output. A caller-created key requires a complete rule, including `min_length`, `max_length`, and an anchored `validation_regex`.
 
-The module computes one deterministic `resource_hash` from the full base label plus any stable values in `resource_hash_values`.
+### Structured groups
 
-```hcl
-resource_hash_values = [
-  "aws",
-  "123456789012",
-  "us-west-2",
-]
-```
-
-`id_resource` adds the hash when a resource rule requires it or when truncation needs a suffix. `id_resource_unique` always adds the hash for each resource key.
-
-### AWS Resource Types
-
-AWS does not publish one official resource abbreviation catalog. The module includes curated defaults for common named resources, and callers can add support for any Terraform AWS resource type:
+`label_groups` models hierarchical names without format strings:
 
 ```hcl
-aws_resource_types = ["bedrockagent_agent"]
+label_groups        = [["namespace"], ["application", "attributes"]]
+component_delimiter = "-"
+group_delimiter     = "/"
+code_position       = "none"
 ```
 
-This creates `module.label.id_resource.aws_bedrockagent_agent`.
+With `platform`, `orders`, and `api`, this produces `platform/orders-api`. Components that become empty during transformation are removed before groups are joined, so empty groups do not create leading, doubled, or trailing delimiters. Required prefixes and suffixes remain protected during hashing and truncation.
 
-Override generated or built-in codes with `resource_codes`:
+### Deterministic hashing
 
-```hcl
-resource_codes = {
-  aws_bedrockagent_agent = "agent"
-}
-```
+The hash seed is the structured JSON encoding of raw label values plus `resource_hash_values`. The hash provides deterministic collision resistance but cannot guarantee global uniqueness. Include stable account, tenant, subscription, or other scope values when names share a provider namespace.
 
-### Resource Rules
+- `never` omits an invalid or overlong name instead of adding a hash.
+- `when_needed` adds a hash for truncation or recoverable empty and minimum-length cases.
+- `always` always adds a hash while preserving affixes and the maximum length.
 
-`resource_label_rules` can override or extend per-resource behavior. Supported fields are `code`, `code_position`, `delimiter`, `regex_replace_chars`, `label_value_case`, `id_length_limit`, `globally_unique`, `hash_length`, `include_region`, `required_suffix`, `trim_chars`, `collapse_regex`, and `collapse_replacement`.
+`resource_name_hashed` forces hashing for every supported physical-name key. A per-rule `hash_length` overrides `resource_hash_length` when a rule needs different hash headroom.
+
+### Name errors
+
+`resource_name_errors` exposes failed constraints for physical names omitted from `resource_name` and `resource_name_hashed`.
+
+### Azure naming policy
+
+Use Microsoft Cloud Adoption Framework guidance to choose and order Azure name components and tags. Official per-resource constraints govern length, characters, scope, and reserved values.
+
+Built-in Azure physical-name rules place the resource code first, followed by `namespace`, `application`, `region_code`, `environment_code`, and `attributes`. A supplied region appears when its normalized value matches `region_codes`. The compact default region codes are module conventions; callers can replace the map or use a complete rule override with raw `region`. If `region` is unset or absent from `region_codes`, the region component is omitted.
+
+A region component on a resource group describes the resource-group's ARM metadata location. It does not imply that every child resource is deployed there. Pass each regional child its actual region. Put stable role or instance identifiers in `attributes`, and add stable subscription or tenant scope to `resource_hash_values` when needed. Put mutable ownership, cost, and business metadata in tags. Names and tags must not contain personal, sensitive, or confidential information.
+
+### AWS naming and tag policy
+
+AWS does not publish a single cross-service physical-name convention or abbreviation catalog. Built-in AWS codes, component choices, ECR path grouping, Region omission, and hash defaults are module conventions. Each built-in physical-name rule encodes its service-specific constraints.
+
+Built-in AWS physical names omit Region by default. Region remains present in generated tags and the raw hash seed. A caller can add `region` or `region_code` through a complete rule override. The default generated tag keys remain v1 compatible. Consumers that need organization-prefixed keys can set `labels_as_tags = []` and provide their keys through `tags`. AWS tags must not contain personal, sensitive, or confidential information.
+
+### Context chaining
+
+The serialized context contains `schema_version = 2`, raw values under `labels_raw`, typed rules under `resource_rules`, and v2 code overrides under `resource_code_overrides`. A new v2 context chain omits the legacy `resource_codes` key. When v2 consumes v1 context, it preserves the raw legacy map for later v1 children and emits a normalized copy under `resource_code_overrides` for v2 descendants. A direct v2 override wins in v2 but does not downgrade into a v1 child.
+
+A v2 child receiving a v1 context uses normalized legacy labels, reports `label_source = "legacy_fallback"`, and ignores inherited v1 resource rules for physical rendering while preserving them for a v1 child. A fallback cannot restore characters or case removed by its v1 parent. Avoid mixing v1 and v2 parent contexts in one stack.
+
+### Generated AWS types and custom codes
+
+Values in `aws_resource_types` and code-only entries in `resource_codes` produce abbreviations and logical labels. They do not produce physical names until the caller supplies a complete rule.
+
+### Version pinning
+
+Pin approved stacks to the immutable `v2.0.0` tag. The moving `v2.0` tag adopts future patch releases automatically. Existing v1 tags are never moved.
 
 ### References
 
+Cross-service guidance informs module defaults. For each built-in physical-name rule, cite the official service constraints and test its boundaries.
+
 - Cloud Posse upstream module: https://github.com/cloudposse/terraform-null-label
+- Terraform type constraints: https://developer.hashicorp.com/terraform/language/expressions/type-constraints
+- Terraform output preconditions: https://developer.hashicorp.com/terraform/language/block/output
+- Amazon ECR repository naming: https://docs.aws.amazon.com/AmazonECR/latest/APIReference/API_CreateRepository.html
+- AWS KMS aliases: https://docs.aws.amazon.com/kms/latest/APIReference/API_CreateAlias.html
+- Amazon ElastiCache replication groups: https://docs.aws.amazon.com/AmazonElastiCache/latest/APIReference/API_CreateReplicationGroup.html
+- Amazon S3 bucket naming: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
+- AWS Best Practices for Tagging AWS Resources: https://docs.aws.amazon.com/whitepapers/latest/tagging-best-practices/tagging-best-practices.html
+- AWS Tag Editor best practices and strategies: https://docs.aws.amazon.com/tag-editor/latest/userguide/best-practices-and-strats.html
+- Microsoft CAF naming guidance: https://learn.microsoft.com/en-us/azure/cloud-adoption-framework/ready/azure-best-practices/resource-naming
 - Microsoft CAF resource abbreviations: https://learn.microsoft.com/en-us/azure/cloud-adoption-framework/ready/azure-best-practices/resource-abbreviations
-- Azure resource name rules: https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/resource-name-rules
-- AWS Regions reference: https://docs.aws.amazon.com/global-infrastructure/latest/regions/aws-regions.html
-- AWS tagging and naming best practices: https://docs.aws.amazon.com/tag-editor/latest/userguide/best-practices-and-strats.html
-- Amazon S3 bucket naming rules: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
-- IAM quotas and name requirements: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html
-- Elastic Load Balancing CreateLoadBalancer: https://docs.aws.amazon.com/elasticloadbalancing/latest/APIReference/API_CreateLoadBalancer.html
-- Elastic Load Balancing CreateTargetGroup: https://docs.aws.amazon.com/elasticloadbalancing/latest/APIReference/API_CreateTargetGroup.html
-- Amazon RDS CreateDBInstance: https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBInstance.html
-- Amazon RDS CreateDBCluster: https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBCluster.html
-- DynamoDB naming rules and data types: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.NamingRulesDataTypes.html
-- Lambda CreateFunction: https://docs.aws.amazon.com/lambda/latest/api/API_CreateFunction.html
-- Amazon SQS CreateQueue: https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_CreateQueue.html
-- Amazon SNS CreateTopic: https://docs.aws.amazon.com/sns/latest/api/API_CreateTopic.html
-- Amazon ECR CreateRepository: https://docs.aws.amazon.com/AmazonECR/latest/APIReference/API_CreateRepository.html
-- CloudWatch Logs CreateLogGroup: https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_CreateLogGroup.html
+- Azure resource naming rules: https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/resource-name-rules
+- Azure resource-group location behavior: https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/overview#which-location-should-i-use-for-my-resource-group
+- Azure AI Search naming: https://learn.microsoft.com/en-us/azure/search/search-create-service-portal
 
 > [!IMPORTANT]
 > Pin this module to a release tag in real stacks. Examples may use a local path
@@ -183,7 +206,7 @@ resource_codes = {
 
 | Name | Version |
 | ---- | ------- |
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 0.13.0 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.3.2, < 2.0.0 |
 
 ## Providers
 
@@ -220,10 +243,11 @@ No resources.
 | <a name="input_regex_replace_chars"></a> [regex\_replace\_chars](#input\_regex\_replace\_chars) | Terraform regular expression (regex) string.<br/>Characters matching the regex will be removed from the ID elements.<br/>If not set, `"/[^a-zA-Z0-9-]/"` is used to remove all characters other than hyphens, letters and digits. | `string` | `null` | no |
 | <a name="input_region"></a> [region](#input\_region) | ID element. Used for cloud region, e.g. 'eastus', 'us-west-2', or 'northeurope'. | `string` | `null` | no |
 | <a name="input_region_codes"></a> [region\_codes](#input\_region\_codes) | Region-to-code map used by the `region_code` label element. | `map(string)` | `null` | no |
-| <a name="input_resource_codes"></a> [resource\_codes](#input\_resource\_codes) | Resource type code overrides and additions used by `id_resource` outputs. | `map(string)` | `null` | no |
+| <a name="input_required_resource_names"></a> [required\_resource\_names](#input\_required\_resource\_names) | Resource-name keys that must produce valid normal and hashed physical names. | `set(string)` | `[]` | no |
+| <a name="input_resource_codes"></a> [resource\_codes](#input\_resource\_codes) | Resource type code overrides and additions used by logical resource labels. | `map(string)` | `null` | no |
 | <a name="input_resource_hash_length"></a> [resource\_hash\_length](#input\_resource\_hash\_length) | Number of characters to use from the deterministic resource hash suffix. | `number` | `null` | no |
 | <a name="input_resource_hash_values"></a> [resource\_hash\_values](#input\_resource\_hash\_values) | Additional stable values included in the deterministic resource hash seed. | `list(string)` | `null` | no |
-| <a name="input_resource_label_rules"></a> [resource\_label\_rules](#input\_resource\_label\_rules) | Resource-specific naming rules keyed by resource type. Each rule can override the generated resource code,<br/>code position (`prefix`, `suffix`, or `none`), delimiter, regular expression for invalid characters, length<br/>limit, casing, hash length, whether to include region, required suffix, and whether the resource name should<br/>include the deterministic global uniqueness hash. | `any` | `null` | no |
+| <a name="input_resource_label_rules"></a> [resource\_label\_rules](#input\_resource\_label\_rules) | Partial physical-name rule overrides keyed by resource type. Null attributes inherit defaults. Empty strings,<br/>empty lists, and zero are explicit values. | <pre>map(object({<br/>    code_position        = optional(string)<br/>    label_groups         = optional(list(list(string)))<br/>    component_delimiter  = optional(string)<br/>    group_delimiter      = optional(string)<br/>    regex_replace_chars  = optional(string)<br/>    label_value_case     = optional(string)<br/>    trim_chars           = optional(string)<br/>    collapse_regex       = optional(string)<br/>    collapse_replacement = optional(string)<br/>    required_prefix      = optional(string)<br/>    required_suffix      = optional(string)<br/>    min_length           = optional(number)<br/>    max_length           = optional(number)<br/>    validation_regex     = optional(string)<br/>    forbidden_regexes    = optional(list(string))<br/>    hash_policy          = optional(string)<br/>    hash_length          = optional(number)<br/>  }))</pre> | `null` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Additional tags (e.g. `{'BusinessUnit': 'XYZ'}`).<br/>Neither the tag keys nor the tag values will be modified by this module. | `map(string)` | `{}` | no |
 
 ## Outputs
@@ -239,19 +263,22 @@ No resources.
 | <a name="output_enabled"></a> [enabled](#output\_enabled) | True if module is enabled, false otherwise |
 | <a name="output_environment"></a> [environment](#output\_environment) | Normalized environment |
 | <a name="output_id"></a> [id](#output\_id) | Disambiguated ID string restricted to `id_length_limit` characters in total |
-| <a name="output_id_for_keyvault"></a> [id\_for\_keyvault](#output\_id\_for\_keyvault) | Disambiguated ID string generating unique name for Azure Key Vault. |
-| <a name="output_id_for_storage_account"></a> [id\_for\_storage\_account](#output\_id\_for\_storage\_account) | Disambiguated ID string generating unique name for Azure Storage Accounts |
+| <a name="output_id_for_keyvault"></a> [id\_for\_keyvault](#output\_id\_for\_keyvault) | Deprecated alias for `resource_name_hashed.azure_key_vault`. |
+| <a name="output_id_for_storage_account"></a> [id\_for\_storage\_account](#output\_id\_for\_storage\_account) | Deprecated alias for `resource_name_hashed.azure_storage_account`. |
 | <a name="output_id_full"></a> [id\_full](#output\_id\_full) | ID string not restricted in length |
 | <a name="output_id_length_limit"></a> [id\_length\_limit](#output\_id\_length\_limit) | The id\_length\_limit actually used to create the ID, with `0` meaning unlimited |
-| <a name="output_id_resource"></a> [id\_resource](#output\_id\_resource) | Resource-specific ID strings with resource codes, naming restrictions, length limits, and required global hash suffixes applied. |
-| <a name="output_id_resource_unique"></a> [id\_resource\_unique](#output\_id\_resource\_unique) | Resource-specific ID strings with deterministic hash suffixes applied, including for resources that do not require global uniqueness. |
+| <a name="output_id_with_resource_code"></a> [id\_with\_resource\_code](#output\_id\_with\_resource\_code) | Logical code-bearing labels. These values do not claim provider naming validity. |
 | <a name="output_label_order"></a> [label\_order](#output\_label\_order) | The naming order actually used to create the ID |
 | <a name="output_namespace"></a> [namespace](#output\_namespace) | Normalized namespace |
 | <a name="output_normalized_context"></a> [normalized\_context](#output\_normalized\_context) | Normalized context of this module |
 | <a name="output_regex_replace_chars"></a> [regex\_replace\_chars](#output\_regex\_replace\_chars) | The regex\_replace\_chars actually used to create the ID |
 | <a name="output_region"></a> [region](#output\_region) | Normalized region |
-| <a name="output_resource_hash"></a> [resource\_hash](#output\_resource\_hash) | Deterministic hash base used by resource labels that need a global uniqueness suffix. |
-| <a name="output_resource_label_rules"></a> [resource\_label\_rules](#output\_resource\_label\_rules) | Normalized resource naming rules used to produce the resource-specific IDs. |
+| <a name="output_resource_codes"></a> [resource\_codes](#output\_resource\_codes) | Normalized resource abbreviations keyed by provider-qualified resource type. |
+| <a name="output_resource_hash"></a> [resource\_hash](#output\_resource\_hash) | Deterministic hash seed used to provide collision-resistant resource-name suffixes. |
+| <a name="output_resource_label_rules"></a> [resource\_label\_rules](#output\_resource\_label\_rules) | Effective normalized v2 resource rules keyed by resource type. |
+| <a name="output_resource_name"></a> [resource\_name](#output\_resource\_name) | Provider-valid physical names produced by complete resource rules. |
+| <a name="output_resource_name_errors"></a> [resource\_name\_errors](#output\_resource\_name\_errors) | Physical-name validation errors keyed by resource type. |
+| <a name="output_resource_name_hashed"></a> [resource\_name\_hashed](#output\_resource\_name\_hashed) | Provider-valid physical names with deterministic hashes applied. |
 | <a name="output_tags"></a> [tags](#output\_tags) | Normalized Tag map |
 | <a name="output_tags_as_list_of_maps"></a> [tags\_as\_list\_of\_maps](#output\_tags\_as\_list\_of\_maps) | This is a list with one map for each `tag`. Each map contains the tag `key`,<br/>`value`, and contents of `var.additional_tag_map`. Used in the rare cases<br/>where resources need additional configuration information for each tag. |
 <!-- markdownlint-restore -->
@@ -291,7 +318,7 @@ In general, PRs are welcome. We follow the typical "fork-and-pull" Git workflow.
 
 ## Running Terraform Tests
 
-Focused tests live in [`test/src`](test/src) and use Terratest against `examples/resource-aware`.
+The complete test suite lives in [`test/src`](test/src).
 
 Install:
 - Terraform
@@ -302,7 +329,7 @@ To run tests:
 
 ```sh
 cd test/src
-go test -timeout 20m -run '^TestExamplesResourceAware$' .
+go test -count=1 -timeout 20m .
 ```
 
 To regenerate this README:

@@ -1,0 +1,22 @@
+{
+  "tag": "v1.2.2",
+  "tag_object": "e438758f24ebb4dbb55a9011b884ec8f60b49710",
+  "commit": "895f056322e93c44d51d46547bd90f426b525ed3",
+  "runtime_files": {
+    "LICENSE": "312a41e78641004a3f88a41b90f5b549ca0244b2b2d555ca768fe98c3e895f85",
+    "codes.aws.regions.tf": "3354ec836c855328eddb86ad4b2c2cb7acae9cd4312594e6ad0f2826276161b9",
+    "codes.aws.resources.tf": "088e1caf94a7a54e4702a7d24d113401c54224faacc77caed4def25755e28e60",
+    "codes.azure.regions.tf": "4e351a7edbf6fa1f5162c72dd2ade2bcce2e3f0ac9998e56a2bec3bb9c9f7a53",
+    "codes.azure.resources.tf": "9f642ef61a71b69a1ce367cd53ee5b94d925e4a69e9166e844dd37839a4a3a4e",
+    "codes.environment.tf": "43e81743a10ef4c147102f49e5ab73301c38bb4e4fa4fab6836b5f70ceb08286",
+    "defaults.tf": "f5b6d24cec30ce5b81b1ba7450888477daad6ec83696d94c414c7869ccb37fae",
+    "descriptors.tf": "da0619345688b93d7dd07c86a74907970f2228be0ac7f60309b5cbac2abff92c",
+    "main.tf": "51991b9480ce95d70e5855ca2a931502b0c868f5fd76a68f6371a419adf9eb6b",
+    "outputs.tf": "4dcda28e84dbd5e995da828825e88663192232b6e0b953870f2c5d7cd2b7e123",
+    "resource-label-rules.tf": "9c3bcff54c3a7d9ffcfcb394b06a02aefaf748cddd941ef39a9ecd721d23d215",
+    "resource-labels.tf": "a417b9748ceb83d3f227613d116baeb13519ef96ade47906e65f57f343da7794",
+    "serialization.tf": "dfcc66cbf9a16b0225112351c6e670968b9b7838c5578ed06b4bc4592f927ffc",
+    "variables.tf": "4d1253592619bb1d134e4b50af39e3cd78de690ea513826e13e8ae7fbc64de46",
+    "versions.tf": "e014d8a4a98eac13b4d0d657d0bd9d068c7ba6ed1ac4bb2d97de7ef14318af29"
+  }
+}
